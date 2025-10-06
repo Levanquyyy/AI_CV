@@ -5,10 +5,6 @@
 A modern job portal application built with the MERN stack (MongoDB, Express, React, Node.js) where recruiters/companies can post jobs and applicants can search/apply for opportunities. Features dedicated dashboards for both recruiters and applicants.
 
 
-## Screenshots
-
-![Startup Website Screenshot](./Prodigy.gif)
-
 
 ## ✨ Features
 
