@@ -1,4 +1,5 @@
 import express from "express";
+import multer from "multer";
 import { applyForJob, getUserData, getUserJobApplications, updateUserResume } from "../controller/userController.js";
 import upload from "../config/multer.js";
 
@@ -16,8 +17,16 @@ router.post("/apply", applyForJob)
 router.get("/applications", getUserJobApplications)
 
 // Update the resume
-
-router.post('/update-resume', upload.single("resume"), updateUserResume)
+router.post('/update-resume', upload.single("resume"), (err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.json({ success: false, message: 'File too large. Maximum size is 5MB.' });
+    }
+  } else if (err) {
+    return res.json({ success: false, message: err.message });
+  }
+  next();
+}, updateUserResume)
 
 
 export default router;

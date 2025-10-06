@@ -86,19 +86,25 @@ export const updateUserResume = async (req, res) => {
   try {
     const userId = req.auth.userId;
     const resumeFile = req.file;
-
-    console.log("Resume file:", resumeFile);
+    if (!resumeFile) return res.json({ success: false, message: "No resume file provided" });
 
     const userData = await User.findById(userId);
+    if (!userData) return res.json({ success: false, message: "User not found" });
 
-    if (resumeFile) {
-      const resumeUpload = await v2.uploader.upload(resumeFile.path);
-      userData.resume = resumeUpload.secure_url;
-    }
+    // Upload: để Cloudinary tự nhận dạng PDF. (Có thể đặt 'raw' – xem ghi chú bên dưới)
+    const base64 = `data:${resumeFile.mimetype};base64,${resumeFile.buffer.toString("base64")}`;
+    const uploaded = await v2.uploader.upload(base64, {
+      resource_type: "auto",
+      folder: "resumes",
+      public_id: `resume_${userId}_${Date.now()}`
+    });
+
+    userData.resume = uploaded.secure_url; // Lưu thẳng URL public
     await userData.save();
 
-    return res.json({ success: true, message: "Resume Updated Successfully" });
-  } catch (error) {
-    res.json({ success: false, message: error.message });
+    return res.json({ success: true, message: "Resume Updated Successfully", resumeUrl: userData.resume });
+  } catch (err) {
+    console.error("updateUserResume", err);
+    return res.json({ success: false, message: err.message });
   }
 };

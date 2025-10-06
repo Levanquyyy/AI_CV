@@ -31,7 +31,7 @@ Sentry.setupExpressErrorHandler(app);
 app.get("/debug-sentry", function mainHandler(req, res) {
     throw new Error("My first Sentry error!");
   });
-app.post('/webhooks',clerkWebhooks)
+app.post('/api/webhooks/clerk', clerkWebhooks)
 app.use('/api/company',companyRoutes)
 app.use('/api/jobs', JobRoutes)
 app.use('/api/users', userRoutes)
