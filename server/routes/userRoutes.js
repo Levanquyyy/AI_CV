@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import { applyForJob, getUserData, getUserJobApplications, updateUserResume } from "../controller/userController.js";
 import upload from "../config/multer.js";
+import { getAIScreeningResult, screenApplication } from "../controller/aiScreeningController.js";
 
 const router = express.Router();
 
@@ -27,6 +28,10 @@ router.post('/update-resume', upload.single("resume"), (err, req, res, next) => 
   }
   next();
 }, updateUserResume)
+
+// AI Screening routes
+router.post('/applications/screen', screenApplication);
+router.get('/applications/:applicationId/ai-result', getAIScreeningResult);
 
 
 export default router;
