@@ -4,96 +4,147 @@ import { v2 as cloudinary } from "cloudinary";
 import generateToken from "../utils/generateToken.js";
 import Job from "../models/Job.js";
 import JobApplication from "../models/JobApplication.js";
-// Register a new Company
+import { uploadBufferToCloudinary } from "../utils/cloudinaryUpload.js";
+import jwt from "jsonwebtoken";
+// 🧩 Register a new Company (HR)
 export const registerCompany = async (req, res) => {
-  const { name, email, password } = req.body;
-
-  const imageFile = req.file;
-
-  if (!name || !email || !password || !imageFile) {
-    return res.json({ sucess: false, message: "All fields are required" });
-  }
-
   try {
-    const companyExists = await Company.findOne({ email });
+    const { name, email, password } = req.body;
 
-    if (companyExists) {
-      return res.json({ success: false, message: "Company Already Exists" });
+    // Validate tối thiểu
+    if (!name || !email || !password) {
+      return res.json({ success: false, message: "Thiếu trường bắt buộc" });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const exists = await Company.findOne({ email });
+    if (exists) {
+      return res.json({ success: false, message: "Email đã tồn tại" });
+    }
 
-    const imageUpload = await cloudinary.uploader.upload(imageFile.path);
+    // BẮT BUỘC có ảnh vì schema required
+    if (!req.file || !req.file.buffer) {
+      return res.json({
+        success: false,
+        message: "Vui lòng upload logo công ty (image)",
+      });
+    }
+
+    // Upload buffer -> Cloudinary
+    const imageUrl = await uploadBufferToCloudinary(
+      req.file.buffer,
+      "companies"
+    );
+
+    const hash = await bcrypt.hash(password, 10);
 
     const company = await Company.create({
       name,
       email,
-      password: hashedPassword,
-      image: imageUpload.secure_url,
+      password: hash,
+      image: imageUrl,
+      status: "pending",
     });
 
-    res.json({
+    return res.json({
       success: true,
+      message: "Tạo tài khoản thành công. Vui lòng chờ admin duyệt.",
+      company: {
+        id: company._id,
+        name: company.name,
+        status: company.status,
+        image: company.image,
+      },
+      // KHÔNG trả token khi chưa duyệt
+    });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+};
+
+// 🔐 Company Login
+export const loginCompany = async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing credentials (email, password)",
+      });
+    }
+
+    const company = await Company.findOne({ email }).select("+password");
+    // Tránh lộ thông tin: trả về chung 400 khi sai email/password
+    if (!company) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid email or password" });
+    }
+
+    // Chặn login nếu chưa được duyệt
+    if (company.status !== "approved") {
+      return res.status(403).json({
+        success: false,
+        message:
+          company.status === "pending"
+            ? "Your account is pending approval by admin"
+            : "Your account was rejected by admin",
+      });
+    }
+
+    const ok = await bcrypt.compare(password, company.password || "");
+    if (!ok) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid email or password" });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      // Trả rõ lỗi cấu hình để bạn fix .env
+      return res.status(500).json({
+        success: false,
+        message: "Server misconfigured: missing JWT_SECRET",
+      });
+    }
+
+    const token = jwt.sign(
+      { id: company._id, role: "company" },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.json({
+      success: true,
+      token,
       company: {
         _id: company._id,
         name: company.name,
         email: company.email,
         image: company.image,
+        status: company.status,
       },
-      token: generateToken(company._id),
     });
-  } catch (error) {
-    res.json({ success: false, message: error.message });
+  } catch (err) {
+    console.error("Company login error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Internal Server Error",
+    });
   }
 };
 
-// Company Login
-export const loginCompany = async (req, res) => {
-  const { email, password } = req.body;
-
-  try {
-    const company = await Company.findOne({ email });
-
-    if (await bcrypt.compare(password, company.password)) {
-      res.json({
-        success: true,
-        company: {
-          _id: company._id,
-          name: company.name,
-          email: company.email,
-          image: company.image,
-        },
-        token: generateToken(company._id),
-      });
-    } else
-      res.json({
-        sucess: false,
-        message: "Invalid email or password",
-      });
-  } catch (error) {
-    res.json({ success: false, message: error.message });
-  }
-};
-
-// Get company data
+// 🧾 Get Company Data
 export const getCompanyData = async (req, res) => {
   const company = req.company;
-
   try {
-    res.json({ sucess: true, company });
+    res.json({ success: true, company });
   } catch (error) {
-    res.json({
-      success: false,
-      message: error.message,
-    });
+    res.json({ success: false, message: error.message });
   }
 };
 
-// Post a new Job
+// 📢 Post a new Job
 export const postJob = async (req, res) => {
   const { title, description, location, salary, level, category } = req.body;
-
   const companyId = req.company._id;
 
   try {
@@ -107,88 +158,72 @@ export const postJob = async (req, res) => {
       level,
       category,
     });
-
     await newJob.save();
-
     res.json({ success: true, newJob });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
 };
-// Get Company Job Applicants
+
+// 👥 Get Company Job Applicants
 export const getCompanyJobApplicants = async (req, res) => {
   try {
     const companyId = req.company._id;
-
-    // Find Job applications for the user
     const applications = await JobApplication.find({ companyId })
       .populate("userId", "name image email resume")
-      .populate("jobId", "title  location category level salary")
+      .populate("jobId", "title location category level salary")
       .exec();
-
     return res.json({ success: true, applications });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
 };
 
-// Get Company  Posted Jobs
+// 📋 Get Company Posted Jobs
 export const getCompanyPostedJobs = async (req, res) => {
   try {
     const companyId = req.company._id;
-    console.log("companyId:", companyId);
-
     const jobs = await Job.find({ companyId });
-    console.log("jobs:", jobs);
-
-    // adding No. of applicants
     const jobsData = await Promise.all(
       jobs.map(async (job) => {
-        console.log("job:", job);
         const applicants = await JobApplication.find({ jobId: job._id });
-        console.log("applicants:", applicants);
         return { ...job.toObject(), applicants: applicants.length };
       })
     );
-
-    console.log("jobsData:", jobsData);
-
-    // Adding No of appicants info in data
     res.json({ success: true, jobsData });
   } catch (error) {
-    console.error("Error:", error);
     res.json({ success: false, message: error.message });
   }
 };
 
-// Change Job Application Status
+// 🔄 Change Job Application Status
 export const ChangeJobApplicationStatus = async (req, res) => {
   try {
     const { id, status } = req.body;
-
-    // Find Job Application and update Status
-
     await JobApplication.findOneAndUpdate({ _id: id }, { status });
-    res.json({ success: true, message: "Status Changed" });
+    res.json({ success: true, message: "Status changed" });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
 };
 
-// Change Job Visiblity
+// 👁️ Toggle Job Visibility
 export const changeVisiblity = async (req, res) => {
   try {
     const { id } = req.body;
-
     const companyID = req.company._id;
-
     const job = await Job.findById(id);
 
     if (companyID.toString() === job.companyId.toString()) {
       job.visible = !job.visible;
+      await job.save();
+      res.json({ success: true, job });
+    } else {
+      res.json({
+        success: false,
+        message: "Not authorized to modify this job",
+      });
     }
-    await job.save();
-    res.json({ success: true, job });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }

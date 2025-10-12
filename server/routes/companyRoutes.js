@@ -9,13 +9,29 @@ import {
   postJob,
   registerCompany,
 } from "../controller/comapanyController.js";
-import upload from "../config/multer.js";
+import { uploadImage } from "../config/multer.js";
 import { protectCompany } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // Register a company
-router.post("/register", upload.single("image"), registerCompany);
+router.post(
+  "/register",
+  uploadImage.single("image"),
+  (err, req, res, next) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.json({
+          success: false,
+          message: "Ảnh quá lớn. Tối đa 3MB.",
+        });
+      }
+    }
+    if (err) return res.json({ success: false, message: err.message });
+    next();
+  },
+  registerCompany
+);
 
 // Company Login
 router.post("/login", loginCompany);
