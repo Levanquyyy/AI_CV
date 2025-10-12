@@ -157,9 +157,16 @@ export const postJob = async (req, res) => {
       date: Date.now(),
       level,
       category,
+      status: "pending", // MỚI
+      visible: false, // MỚI
     });
     await newJob.save();
-    res.json({ success: true, newJob });
+
+    res.json({
+      success: true,
+      message: "Job đã gửi để xét duyệt. Vui lòng chờ admin phê duyệt.",
+      newJob,
+    });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }
@@ -214,16 +221,25 @@ export const changeVisiblity = async (req, res) => {
     const companyID = req.company._id;
     const job = await Job.findById(id);
 
-    if (companyID.toString() === job.companyId.toString()) {
-      job.visible = !job.visible;
-      await job.save();
-      res.json({ success: true, job });
-    } else {
-      res.json({
+    if (!job) return res.json({ success: false, message: "Job not found" });
+    if (companyID.toString() !== job.companyId.toString()) {
+      return res.json({
         success: false,
         message: "Not authorized to modify this job",
       });
     }
+
+    // Chỉ cho phép đổi visible khi đã approved
+    if (job.status !== "approved") {
+      return res.json({
+        success: false,
+        message: "Job chưa được duyệt, không thể thay đổi hiển thị",
+      });
+    }
+
+    job.visible = !job.visible;
+    await job.save();
+    res.json({ success: true, job });
   } catch (error) {
     res.json({ success: false, message: error.message });
   }

@@ -12,12 +12,14 @@ export const makeAdminApi = (backendUrl, adminToken) => {
     getOverview: () => http.get("/overview"),
 
     // HR pending
-    getHRPending: () => http.get("/hr/pending"),
+    getHRPending: () => http.get("/hr"),
     approveHR: (id) => http.post(`/hr/${id}/approve`),
     rejectHR: (id) => http.post(`/hr/${id}/reject`),
+    deleteHR: (id) => http.delete(`hr/${id}`),
 
     // Jobs pending
-    getJobsPending: () => http.get("/jobs/pending"),
+    getJobsPending: () => http.get("/jobs"),
+    getJobDetail: (id) => http.get(`/jobs/${id}`),
     approveJob: (id) => http.post(`/jobs/${id}/approve`),
     rejectJob: (id) => http.post(`/jobs/${id}/reject`),
 

@@ -65,24 +65,46 @@ router.post("/login", async (req, res) => {
 });
 
 /* ---------------------------------------------
-   3️⃣  Lấy danh sách HR chờ duyệt
+   3️⃣  HR MANAGEMENT: list (filter+paginate), approve, reject, delete
+   GET /api/admin/hr?status=&page=&limit=&q=
 --------------------------------------------- */
-router.get("/hr/pending", protectAdmin, async (req, res) => {
+router.get("/hr", protectAdmin, async (req, res) => {
   try {
-    const pendingCompanies = await Company.find({ status: "pending" }).select(
-      "_id name email image status createdAt"
-    );
+    const { status = "all", page = 1, limit = 10, q = "" } = req.query;
 
-    return res.json({
+    const filter = {};
+    if (status !== "all") filter.status = status;
+
+    if (q) {
+      const regex = new RegExp(q, "i");
+      filter.$or = [{ name: regex }, { email: regex }];
+    }
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [items, total] = await Promise.all([
+      Company.find(filter)
+        .select("_id name email image status createdAt")
+        .sort({ createdAt: -1 }) // mới nhất lên đầu
+        .skip(skip)
+        .limit(limitNum),
+      Company.countDocuments(filter),
+    ]);
+
+    res.json({
       success: true,
-      data: pendingCompanies,
-      count: pendingCompanies.length,
+      data: items,
+      meta: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+      },
     });
   } catch (err) {
-    console.error("Error fetching pending companies:", err);
-    return res
-      .status(500)
-      .json({ success: false, message: "Server error: " + err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -142,6 +164,140 @@ router.post("/hr/:id/reject", protectAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error("Error rejecting HR:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+/* ---------------------------------------------
+   Xoá HR
+--------------------------------------------- */
+router.delete("/hr/:id", protectAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid company ID" });
+    }
+
+    const company = await Company.findById(id);
+    if (!company) {
+      return res.status(404).json({ success: false, message: "HR not found" });
+    }
+
+    // Xoá jobs và applications liên quan
+    const jobs = await Job.find({ companyId: id }).select("_id");
+    const jobIds = jobs.map((j) => j._id);
+
+    await JobApplication.deleteMany({
+      $or: [{ companyId: id }, { jobId: { $in: jobIds } }],
+    });
+    await Job.deleteMany({ companyId: id });
+    await Company.findByIdAndDelete(id);
+
+    return res.json({ success: true, message: "HR deleted", deletedId: id });
+  } catch (err) {
+    console.error("Delete HR error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+/* ---------------------------------------------
+   JOBS MANAGEMENT: list (filter+paginate), detail, approve, reject, delete
+   GET /api/admin/jobs?status=&page=&limit=&q=
+--------------------------------------------- */
+router.get("/jobs", protectAdmin, async (req, res) => {
+  try {
+    const { status = "all", page = 1, limit = 10, q = "" } = req.query;
+
+    const filter = {};
+    if (status !== "all") filter.status = status;
+    if (q) {
+      const regex = new RegExp(q, "i");
+      filter.$or = [{ title: regex }, { location: regex }, { category: regex }];
+    }
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [items, total] = await Promise.all([
+      Job.find(filter)
+        .populate("companyId", "name email image status")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      Job.countDocuments(filter),
+    ]);
+
+    res.json({
+      success: true,
+      data: items,
+      meta: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        pages: Math.ceil(total / limitNum),
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ---------------------------------------------
+   VIEW one job (content only) 
+--------------------------------------------- */
+router.get("/jobs/:id", protectAdmin, async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id).select(
+      "_id title description location category level salary status createdAt date"
+    );
+    if (!job)
+      return res.status(404).json({ success: false, message: "Job not found" });
+    res.json({ success: true, data: job });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+/* ---------------------------------------------
+   Approve job
+--------------------------------------------- */
+router.post("/jobs/:id/approve", protectAdmin, async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.json({ success: false, message: "Job not found" });
+
+    job.status = "approved";
+    job.visible = true; // tự động hiển thị
+    await job.save();
+
+    res.json({
+      success: true,
+      message: "✅ Job approved",
+      data: { _id: job._id, status: job.status, visible: job.visible },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/* ---------------------------------------------
+   Reject job
+--------------------------------------------- */
+router.post("/jobs/:id/reject", protectAdmin, async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.json({ success: false, message: "Job not found" });
+
+    job.status = "rejected";
+    job.visible = false;
+    await job.save();
+
+    res.json({
+      success: true,
+      message: "❌ Job rejected",
+      data: { _id: job._id, status: job.status, visible: job.visible },
+    });
+  } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 });

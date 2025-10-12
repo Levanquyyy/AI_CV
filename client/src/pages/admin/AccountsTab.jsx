@@ -32,6 +32,10 @@ const AccountsTab = ({ api }) => {
           await api.rejectHR(id);
           await load();
         }}
+        onDelete={async (id) => {
+          await api.deleteHR(id);
+          setRows((prev) => prev.filter((r) => r._id !== id));
+        }}
       />
     </section>
   );

@@ -12,7 +12,6 @@ import ViewApplications from "./pages/ViewApplications";
 import "quill/dist/quill.snow.css";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import AdminDashboard from "./pages/DashboardManagement";
 import AdminLogin from "./pages/AdminLogin";
 import AdminLayout from "./pages/admin/AdminLayout";
 
