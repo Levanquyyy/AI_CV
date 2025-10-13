@@ -8,21 +8,18 @@ const ContentTab = ({ api }) => {
   const [rows, setRows] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
   const [loadingView, setLoadingView] = useState(false);
-  const [page, setPage] = useState(1);
-  const limit = 10;
 
-  const load = async (p = page) => {
+  const load = async () => {
     try {
-      const { data } = await api.getJobsPending({ page: p, limit });
+      const { data } = await api.getJobsPending();
       setRows(data?.data || []);
-      setPage(data?.page || p);
     } catch {
       toast.error("Không thể tải danh sách tin chờ duyệt");
     }
   };
 
   useEffect(() => {
-    load(1);
+    load();
   }, []);
 
   const handleView = async (id) => {
@@ -77,7 +74,15 @@ const ContentTab = ({ api }) => {
             toast.error("Từ chối thất bại");
           }
         }}
-        // Optional: hook up pagination controls inside the table if you have them
+        onDelete={async (id) => {
+          const { data } = await api.deleteJob(id);
+          if (data.success) {
+            toast.success("Đã xoá bài đăng");
+            await load();
+          } else {
+            toast.error(data.message);
+          }
+        }}
       />
 
       {/* Popup xem chi tiết job */}

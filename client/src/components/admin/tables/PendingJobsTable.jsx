@@ -89,10 +89,10 @@ const PendingJobsTable = ({ rows, onApprove, onReject, onView, onDelete }) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg w-[360px] text-center">
             <h3 className="text-lg font-semibold mb-3 text-gray-800">
-              Xác nhận xoá tài khoản
+              Xác nhận xoá bài đăng
             </h3>
             <p className="text-sm text-gray-600 mb-5">
-              Bạn có chắc chắn muốn xoá tài khoản này không?
+              Bạn có chắc chắn muốn xoá bài đăng này không?
             </p>
             <div className="flex justify-center gap-3">
               <button

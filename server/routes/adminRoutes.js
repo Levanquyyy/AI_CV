@@ -7,7 +7,14 @@ import Job from "../models/Job.js";
 import User from "../models/User.js";
 import JobApplication from "../models/JobApplication.js";
 import { protectAdmin } from "../middleware/adminAuth.js";
+import {
+  getReports,
+  markReportReviewed,
+  submitReport,
+} from "../controller/reportController.js";
 import mongoose from "mongoose";
+import Report from "../models/Report.js";
+
 const router = express.Router();
 
 /* ---------------------------------------------
@@ -302,7 +309,37 @@ router.post("/jobs/:id/reject", protectAdmin, async (req, res) => {
   }
 });
 /* ---------------------------------------------
-   5️⃣  Thống kê hệ thống
+   Xoá bài đăng (Admin)
+--------------------------------------------- */
+router.delete("/jobs/:id", protectAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid job ID" });
+    }
+
+    const job = await Job.findById(id);
+    if (!job) {
+      return res.status(404).json({ success: false, message: "Job not found" });
+    }
+
+    await job.deleteOne();
+
+    res.json({
+      success: true,
+      message: "✅ Job deleted successfully",
+      data: { _id: id },
+    });
+  } catch (err) {
+    console.error("Error deleting job:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+/* ---------------------------------------------
+  Thống kê hệ thống
 --------------------------------------------- */
 router.get("/stats", protectAdmin, async (req, res) => {
   try {
@@ -326,9 +363,55 @@ router.get("/stats", protectAdmin, async (req, res) => {
     res.json({ success: false, message: err.message });
   }
 });
-
+// User gửi báo cáo
+router.post("/", submitReport);
 /* ---------------------------------------------
-   6️⃣  Log hệ thống (mock)
+   Báo cáo vi phạm (list)
+--------------------------------------------- */
+router.get("/reports", protectAdmin, async (req, res) => {
+  try {
+    // Lấy tất cả report kèm job & company
+    const reports = await Report.find({})
+      .populate({ path: "jobId", select: "title companyId createdAt" })
+      .populate({ path: "companyId", select: "name email" })
+      .sort({ createdAt: -1 });
+
+    // Gom nhóm theo (jobId + reason) để có "số báo cáo"
+    const grouped = new Map();
+    for (const r of reports) {
+      const key = `${r.jobId?._id || "unknown"}|${r.reason}`;
+      const curr = grouped.get(key) || {
+        _id: r._id, // id đầu tiên đại diện nhóm
+        jobId: r.jobId?._id,
+        title: r.jobId?.title || "(Đã xoá / Không xác định)",
+        company: r.companyId?.name || "-",
+        reason: r.reason,
+        description: r.description || "",
+        status: r.status,
+        reports: 0,
+        createdAt: r.createdAt,
+      };
+      curr.reports += 1;
+      // cập nhật createdAt để luôn là thời điểm mới nhất của nhóm
+      if (r.createdAt > curr.createdAt) curr.createdAt = r.createdAt;
+      grouped.set(key, curr);
+    }
+
+    const data = Array.from(grouped.values()).sort(
+      (a, b) => b.createdAt - a.createdAt
+    );
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error("GET /admin/reports error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Admin đánh dấu đã xử lý
+router.post("/reports/:id/reviewed", protectAdmin, markReportReviewed);
+/* ---------------------------------------------
+  Log hệ thống (mock)
 --------------------------------------------- */
 router.get("/logs", protectAdmin, async (req, res) => {
   // sau này bạn có thể dùng Winston hoặc Mongo logs
