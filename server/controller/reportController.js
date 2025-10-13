@@ -2,52 +2,69 @@
 import Report from "../models/Report.js";
 import Job from "../models/Job.js";
 import mongoose from "mongoose";
+import { logActivity } from "../utils/activity.js";
 
-/**
- * POST /api/reports
- * Gửi báo cáo vi phạm một tin tuyển dụng
- */
 export const submitReport = async (req, res) => {
   try {
-    const { jobId, reason, description } = req.body;
-    const userId = req.auth?.userId || req.body.userId || "anonymous";
+    const { jobId, reason, description, userName, userEmail } = req.body;
 
-    // Kiểm tra user đăng nhập (nếu hệ thống yêu cầu)
+    // bắt buộc đăng nhập
     if (!req.auth?.userId) {
       return res.status(401).json({
         success: false,
         message: "Bạn cần đăng nhập để gửi báo cáo.",
       });
     }
+    const userId = req.auth.userId || req.body.userId;
 
-    // Validate jobId hợp lệ
+    // validate input
+    if (!jobId) {
+      return res.status(400).json({ success: false, message: "Thiếu Job ID." });
+    }
+    if (!reason || !reason.trim()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Vui lòng chọn lý do báo cáo." });
+    }
     if (!mongoose.Types.ObjectId.isValid(jobId)) {
       return res
         .status(400)
         .json({ success: false, message: "Job ID không hợp lệ." });
     }
 
-    // Kiểm tra job có tồn tại
-    const job = await Job.findById(jobId);
+    // kiểm tra job
+    const job = await Job.findById(jobId).select("title companyId");
     if (!job) {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy tin tuyển dụng." });
     }
 
-    // Lấy companyId từ job
-    const companyId = job.companyId;
-
-    // Tạo hoặc bỏ qua nếu đã báo cáo (theo unique index)
-    const newReport = new Report({
+    // tạo report (có unique index jobId+userId -> có thể ném lỗi 11000)
+    const newReport = await Report.create({
       jobId,
-      companyId,
+      companyId: job.companyId,
       userId,
+      userName: userName?.trim() || "Ẩn danh",
+      userEmail: userEmail?.trim() || "Không cung cấp",
       reason: reason.trim(),
-      description: description?.trim() || "",
+      description: description.trim(),
+      status: "pending",
     });
 
-    await newReport.save();
+    // log hoạt động
+    logActivity({
+      action: "report.submitted",
+      message: `User ${userName} báo cáo job "${job.title}": ${reason}`,
+      actorType: "user",
+      actorName: userName,
+      actorId: userId,
+      targetType: "job",
+      targetId: job._id.toString(),
+      targetName: job.title,
+      req,
+      meta: { userName, userEmail, reason, description },
+    });
 
     return res.json({
       success: true,
@@ -57,14 +74,12 @@ export const submitReport = async (req, res) => {
   } catch (err) {
     console.error("Submit report error:", err);
 
-    // Xử lý lỗi trùng lặp (do unique index jobId + userId)
-    if (err.code === 11000) {
+    if (err?.code === 11000) {
       return res.status(400).json({
         success: false,
         message: "⚠️ Bạn đã gửi báo cáo cho bài viết này rồi.",
       });
     }
-
     return res.status(500).json({
       success: false,
       message: "Lỗi hệ thống: " + err.message,

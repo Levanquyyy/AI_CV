@@ -128,9 +128,12 @@ const ApplyJob = () => {
       const token = await getToken(); // 👈 Lấy token Clerk cho user hiện tại
       const payload = {
         jobId: jobData?._id,
+        userName: userData?.name || userData?.email,
+        userEmail: userData?.email,
         reason: reportForm.reason.trim(),
         description: reportForm.description.trim(),
       };
+      console.log("data", payload);
 
       // 👇 gửi kèm token để BE nhận dạng req.auth.userId
       const { data } = await axios.post(`${backendUrl}/api/reports`, payload, {

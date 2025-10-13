@@ -11,9 +11,37 @@ import {
   getAIScreeningResult,
   screenApplication,
 } from "../controller/aiScreeningController.js";
+import { logActivity } from "../utils/activity.js";
 
 const router = express.Router();
 
+// Client gọi ngay sau khi login để ghi log
+router.post("/after-login", async (req, res) => {
+  try {
+    const userId = req.auth?.userId || req.body.userId; // nếu route này đứng sau clerkMiddleware thì lấy req.auth
+    const name = req.body?.name || "";
+    if (!userId)
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing userId" });
+
+    logActivity({
+      action: "user.login",
+      message: `User login ${name || userId}`,
+      actorType: "user",
+      actorId: userId,
+      actorName: name,
+      targetType: "user",
+      targetId: userId,
+      targetName: name,
+      req,
+    });
+
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
 // Get User Data
 
 router.get("/user", getUserData);

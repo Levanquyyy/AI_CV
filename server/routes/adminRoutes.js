@@ -8,12 +8,13 @@ import User from "../models/User.js";
 import JobApplication from "../models/JobApplication.js";
 import { protectAdmin } from "../middleware/adminAuth.js";
 import {
-  getReports,
   markReportReviewed,
   submitReport,
 } from "../controller/reportController.js";
 import mongoose from "mongoose";
 import Report from "../models/Report.js";
+import ActivityLog from "../models/ActivityLog.js";
+import { logActivity } from "../utils/activity.js";
 
 const router = express.Router();
 
@@ -133,7 +134,18 @@ router.post("/hr/:id/approve", protectAdmin, async (req, res) => {
 
     company.status = "approved";
     await company.save();
-
+    // LOG
+    logActivity({
+      action: "company.approved",
+      message: `Admin duyệt HR ${company.name}`,
+      actorType: "admin",
+      actorId: req.admin.id,
+      actorName: "admin",
+      targetType: "company",
+      targetId: company._id.toString(),
+      targetName: company.name,
+      req,
+    });
     return res.json({
       success: true,
       message: "✅ HR approved successfully",
@@ -163,7 +175,18 @@ router.post("/hr/:id/reject", protectAdmin, async (req, res) => {
 
     company.status = "rejected";
     await company.save();
-
+    // LOG
+    logActivity({
+      action: "company.rejected",
+      message: `Admin từ chối HR ${company.name}`,
+      actorType: "admin",
+      actorId: req.admin.id,
+      actorName: "admin",
+      targetType: "company",
+      targetId: company._id.toString(),
+      targetName: company.name,
+      req,
+    });
     return res.json({
       success: true,
       message: "❌ HR rejected successfully",
@@ -200,7 +223,21 @@ router.delete("/hr/:id", protectAdmin, async (req, res) => {
     });
     await Job.deleteMany({ companyId: id });
     await Company.findByIdAndDelete(id);
-
+    logActivity({
+      action: "company.deleted",
+      message: `Admin xoá HR ${company.name}`,
+      actorType: "admin",
+      actorId: req.admin?.id,
+      actorName: "admin",
+      targetType: "company",
+      targetId: company._id.toString(),
+      targetName: company.name,
+      req,
+      meta: {
+        email: company.email,
+        status: company.status,
+      },
+    });
     return res.json({ success: true, message: "HR deleted", deletedId: id });
   } catch (err) {
     console.error("Delete HR error:", err);
@@ -276,7 +313,19 @@ router.post("/jobs/:id/approve", protectAdmin, async (req, res) => {
     job.status = "approved";
     job.visible = true; // tự động hiển thị
     await job.save();
-
+    // LOG
+    logActivity({
+      action: "job.approved",
+      message: `Admin duyệt job ${job.title}`,
+      actorType: "admin",
+      actorId: req.admin.id,
+      actorName: "admin",
+      targetType: "job",
+      targetId: job._id.toString(),
+      targetName: job.title,
+      req,
+      meta: { companyId: job.companyId?.toString?.() },
+    });
     res.json({
       success: true,
       message: "✅ Job approved",
@@ -298,7 +347,19 @@ router.post("/jobs/:id/reject", protectAdmin, async (req, res) => {
     job.status = "rejected";
     job.visible = false;
     await job.save();
-
+    // LOG
+    logActivity({
+      action: "job.rejected",
+      message: `Admin từ chối job ${job.title}`,
+      actorType: "admin",
+      actorId: req.admin.id,
+      actorName: "admin",
+      targetType: "job",
+      targetId: job._id.toString(),
+      targetName: job.title,
+      req,
+      meta: { companyId: job.companyId?.toString?.() },
+    });
     res.json({
       success: true,
       message: "❌ Job rejected",
@@ -309,7 +370,7 @@ router.post("/jobs/:id/reject", protectAdmin, async (req, res) => {
   }
 });
 /* ---------------------------------------------
-   Xoá bài đăng (Admin)
+   Xoá bài đăng
 --------------------------------------------- */
 router.delete("/jobs/:id", protectAdmin, async (req, res) => {
   try {
@@ -327,7 +388,18 @@ router.delete("/jobs/:id", protectAdmin, async (req, res) => {
     }
 
     await job.deleteOne();
-
+    logActivity({
+      action: "job.deleted",
+      message: `Admin xoá job ${job.title}`,
+      actorType: "admin",
+      actorId: req.admin.id,
+      actorName: "admin",
+      targetType: "job",
+      targetId: job._id.toString(),
+      targetName: job.title,
+      req,
+      meta: { companyId: job.companyId?.toString?.() },
+    });
     res.json({
       success: true,
       message: "✅ Job deleted successfully",
@@ -411,17 +483,44 @@ router.get("/reports", protectAdmin, async (req, res) => {
 // Admin đánh dấu đã xử lý
 router.post("/reports/:id/reviewed", protectAdmin, markReportReviewed);
 /* ---------------------------------------------
-  Log hệ thống (mock)
+  Log hệ thống 
 --------------------------------------------- */
+// GET /api/admin/logs?page=1&limit=20&action=job.approved&actorType=admin
 router.get("/logs", protectAdmin, async (req, res) => {
-  // sau này bạn có thể dùng Winston hoặc Mongo logs
-  res.json({
-    success: true,
-    logs: [
-      { time: new Date(), action: "Admin logged in" },
-      { time: new Date(), action: "Viewed HR pending list" },
-    ],
-  });
+  try {
+    const logs = await ActivityLog.find()
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
+
+    const data = logs.map((l) => {
+      const actorLabel = l.actorName || l.actorEmail || `#${l.actorId}`;
+      // Nếu là report: dựng câu cho dễ đọc (hoặc dùng l.message đã ghi sẵn)
+      let displayMessage = l.message;
+      if (!displayMessage) {
+        // fallback generic
+        displayMessage = `${l.action} - by ${actorLabel}`;
+      }
+      return {
+        _id: l._id,
+        action: l.action,
+        actorType: l.actorType,
+        actorId: l.actorId,
+        actorName: l.actorName,
+        actorEmail: l.actorEmail,
+        targetType: l.targetType,
+        targetId: l.targetId,
+        targetName: l.targetName,
+        message: l.message,
+        displayMessage,
+        createdAt: l.createdAt,
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 export default router;

@@ -22,7 +22,8 @@ const reportSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-
+    userName: { type: String },
+    userEmail: { type: String },
     // Lý do ngắn gọn
     reason: {
       type: String,

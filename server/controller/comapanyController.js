@@ -6,6 +6,7 @@ import Job from "../models/Job.js";
 import JobApplication from "../models/JobApplication.js";
 import { uploadBufferToCloudinary } from "../utils/cloudinaryUpload.js";
 import jwt from "jsonwebtoken";
+import { logActivity } from "../utils/activity.js";
 // 🧩 Register a new Company (HR)
 export const registerCompany = async (req, res) => {
   try {
@@ -18,7 +19,10 @@ export const registerCompany = async (req, res) => {
 
     const exists = await Company.findOne({ email });
     if (exists) {
-      return res.json({ success: false, message: "Email đã tồn tại" });
+      return res.json({
+        success: false,
+        message: "Tài khoản đã tồn tại. Vui lòng đợi admin xét duyệt",
+      });
     }
 
     // BẮT BUỘC có ảnh vì schema required
@@ -43,6 +47,18 @@ export const registerCompany = async (req, res) => {
       password: hash,
       image: imageUrl,
       status: "pending",
+    });
+    logActivity({
+      action: "company.registered",
+      message: `Company đăng ký: ${company.name}`,
+      actorType: "company",
+      actorId: company._id.toString(),
+      actorName: company.name,
+      targetType: "company",
+      targetId: company._id.toString(),
+      targetName: company.name,
+      req,
+      meta: { email: company.email },
     });
 
     return res.json({
@@ -111,7 +127,17 @@ export const loginCompany = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
-
+    logActivity({
+      action: "company.login",
+      message: `Company đăng nhập: ${company.name}`,
+      actorType: "company",
+      actorId: company._id.toString(),
+      actorName: company.name,
+      targetType: "company",
+      targetId: company._id.toString(),
+      targetName: company.name,
+      req,
+    });
     return res.json({
       success: true,
       token,
