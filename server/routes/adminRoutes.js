@@ -435,6 +435,84 @@ router.get("/stats", protectAdmin, async (req, res) => {
     res.json({ success: false, message: err.message });
   }
 });
+/* ---------------------------------------------
+   THỐNG KÊ & BÁO CÁO MỞ RỘNG
+   GET /api/admin/statistics
+--------------------------------------------- */
+router.get("/statistics", protectAdmin, async (req, res) => {
+  try {
+    const today = new Date();
+    const sevenDaysAgo = new Date(today);
+    sevenDaysAgo.setDate(today.getDate() - 7);
+
+    // 1️⃣ Tổng số job và job mới trong 7 ngày
+    const totalJobs = await Job.countDocuments();
+    const newJobs = await Job.countDocuments({
+      createdAt: { $gte: sevenDaysAgo },
+    });
+
+    // 2️⃣ User mới đăng ký trong 7 ngày
+    const newUsers = await User.countDocuments({
+      _id: { $exists: true },
+      createdAt: { $gte: sevenDaysAgo },
+    }).catch(() => 0);
+
+    // 3️⃣ Lượt đăng nhập (user.login trong ActivityLog)
+    const loginCount = await ActivityLog.countDocuments({
+      action: "user.login",
+      createdAt: { $gte: sevenDaysAgo },
+    });
+
+    // 4️⃣ Job bị báo cáo & bị reject
+    const reportedJobs = await Report.distinct("jobId");
+    const rejectedJobs = await Job.countDocuments({ status: "rejected" });
+
+    const reportedJobCount = reportedJobs.length;
+
+    // 5️⃣ Tạo dữ liệu thống kê theo ngày (7 ngày gần nhất)
+    const jobStatsByDay = await Job.aggregate([
+      { $match: { createdAt: { $gte: sevenDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    const loginStatsByDay = await ActivityLog.aggregate([
+      { $match: { action: "user.login", createdAt: { $gte: sevenDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    // ✅ Kết quả trả về
+    return res.json({
+      success: true,
+      summary: {
+        totalJobs,
+        newJobs,
+        newUsers,
+        loginCount,
+        reportedJobCount,
+        rejectedJobs,
+      },
+      trends: {
+        jobsPerDay: jobStatsByDay,
+        loginsPerDay: loginStatsByDay,
+      },
+    });
+  } catch (err) {
+    console.error("GET /admin/statistics error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 // User gửi báo cáo
 router.post("/", submitReport);
 /* ---------------------------------------------

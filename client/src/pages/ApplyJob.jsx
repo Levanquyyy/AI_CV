@@ -25,7 +25,7 @@ import {
 const ApplyJob = () => {
   const { id } = useParams();
   const { getToken, isSignedIn } = useAuth();
-  const { openSignIn } = useClerk(); // 👈 popup đăng nhập của Clerk
+  const { openSignIn } = useClerk(); // popup đăng nhập của Clerk
 
   const [jobData, setJobData] = useState(null);
   const [isAlreadyApplied, setAlreadyApplied] = useState(false);
@@ -37,6 +37,11 @@ const ApplyJob = () => {
   const [reportForm, setReportForm] = useState({ reason: "", description: "" });
   const [reportSubmitting, setReportSubmitting] = useState(false);
 
+  // --- AI Fit ---
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState(null);
+  const [aiError, setAiError] = useState("");
+
   const {
     jobs = [],
     backendUrl,
@@ -45,7 +50,7 @@ const ApplyJob = () => {
     fetchUserApplications,
   } = useContext(AppContext);
 
-  // Fetch job details
+  // ===== Helpers =====
   const fetchJob = async () => {
     try {
       const { data } = await axios.get(`${backendUrl}/api/jobs/${id}`);
@@ -63,7 +68,6 @@ const ApplyJob = () => {
     }
   };
 
-  // Find similar jobs
   const findSimilarJobs = (currentJob) => {
     const similar = jobs
       .filter(
@@ -76,12 +80,21 @@ const ApplyJob = () => {
     setSimilarJobs(similar);
   };
 
-  // Handle job application
+  const checkAlreadyApplied = () => {
+    if (jobData && userApplications && userApplications.length > 0) {
+      const hasApplied = userApplications.some(
+        (item) => item.jobId?._id === jobData._id
+      );
+      setAlreadyApplied(hasApplied);
+    }
+  };
+
+  // ===== Actions =====
   const applyHandler = async () => {
     try {
       if (!userData) {
         toast.info("Please login to apply.");
-        openSignIn(); // 👈 mở popup đăng nhập Clerk
+        openSignIn();
         return;
       }
 
@@ -108,15 +121,64 @@ const ApplyJob = () => {
     }
   };
 
+  // Độ phù hợp (AI)
+  const handleCheckFit = async () => {
+    try {
+      setAiError("");
+      setAiResult(null);
+
+      if (!isSignedIn) {
+        toast.info("Vui lòng đăng nhập để chấm điểm phù hợp.");
+        openSignIn();
+        return;
+      }
+      if (!userData?.resume) {
+        toast.error("Vui lòng upload CV trước khi chấm điểm.");
+        return;
+      }
+
+      // Phải apply trước để có applicationId
+      const app = userApplications?.find((a) => a?.jobId?._id === jobData?._id);
+      if (!app?._id) {
+        toast.info("Bạn cần Apply job này trước khi chấm điểm.");
+        return;
+      }
+
+      setAiLoading(true);
+      const token = await getToken();
+
+      // Gọi BE chấm điểm
+      await axios.post(
+        `${backendUrl}/api/users/applications/screen`,
+        { applicationId: app._id },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Lấy kết quả
+      const { data } = await axios.get(
+        `${backendUrl}/api/users/applications/${app._id}/ai-result`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (data?.success) {
+        setAiResult(data.data); // { aiScore, aiReasons, aiExtract, aiVersion, aiReviewed }
+      } else {
+        setAiError(data?.message || "Không lấy được kết quả AI.");
+      }
+    } catch (err) {
+      setAiError(err?.response?.data?.message || "AI screening failed.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   // Gửi báo cáo vi phạm
   const handleSubmitReport = async () => {
-    // Nếu chưa đăng nhập => mở popup Clerk
     if (!isSignedIn) {
       toast.info("Vui lòng đăng nhập để gửi báo cáo.");
-      openSignIn(); // 👈 Mở popup đăng nhập Clerk
+      openSignIn();
       return;
     }
-
     if (!reportForm.reason.trim()) {
       toast.warn("Vui lòng chọn lý do báo cáo.");
       return;
@@ -125,7 +187,7 @@ const ApplyJob = () => {
     try {
       setReportSubmitting(true);
 
-      const token = await getToken(); // 👈 Lấy token Clerk cho user hiện tại
+      const token = await getToken();
       const payload = {
         jobId: jobData?._id,
         userName: userData?.name || userData?.email,
@@ -133,9 +195,7 @@ const ApplyJob = () => {
         reason: reportForm.reason.trim(),
         description: reportForm.description.trim(),
       };
-      console.log("data", payload);
 
-      // 👇 gửi kèm token để BE nhận dạng req.auth.userId
       const { data } = await axios.post(`${backendUrl}/api/reports`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -148,7 +208,6 @@ const ApplyJob = () => {
         toast.error(data.message || "Gửi báo cáo thất bại.");
       }
     } catch (err) {
-      console.error("Report submit error:", err);
       toast.error(
         err.response?.data?.message ||
           "Không thể gửi báo cáo. Vui lòng thử lại."
@@ -158,16 +217,7 @@ const ApplyJob = () => {
     }
   };
 
-  // Check if user already applied
-  const checkAlreadyApplied = () => {
-    if (jobData && userApplications && userApplications.length > 0) {
-      const hasApplied = userApplications.some(
-        (item) => item.jobId?._id === jobData._id
-      );
-      setAlreadyApplied(hasApplied);
-    }
-  };
-
+  // ===== Effects =====
   useEffect(() => {
     if (id) fetchJob();
   }, [id, backendUrl]);
@@ -237,7 +287,7 @@ const ApplyJob = () => {
 
                 <motion.div
                   whileHover={{ scale: 1.02 }}
-                  className="flex flex-col items-center gap-3"
+                  className="flex items-center gap-3"
                 >
                   <button
                     onClick={applyHandler}
@@ -257,6 +307,20 @@ const ApplyJob = () => {
                       "Apply Now"
                     )}
                   </button>
+
+                  {/* Nút Độ phù hợp (AI) */}
+                  <button
+                    onClick={handleCheckFit}
+                    disabled={aiLoading}
+                    className={`px-8 py-4 rounded-lg font-semibold text-lg shadow-lg transition-all
+                    ${
+                      aiLoading
+                        ? "bg-emerald-600 text-white flex items-center"
+                        : "bg-white text-blue-600 hover:bg-blue-50 hover:shadow-xl"
+                    }`}
+                  >
+                    {aiLoading ? "Đang chấm điểm..." : "Độ phù hợp (AI)"}
+                  </button>
                 </motion.div>
               </div>
             </div>
@@ -264,6 +328,52 @@ const ApplyJob = () => {
 
           {/* Main Content */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            {/* Kết quả Độ phù hợp (AI) */}
+            {(aiResult || aiError) && (
+              <div className="mb-8 bg-white rounded-xl shadow-md p-6 border border-gray-200">
+                <h3 className="text-xl font-bold text-gray-900 mb-3">
+                  Độ phù hợp cho vị trí: {jobData?.title}
+                </h3>
+                {aiError && <p className="text-red-600 mb-2">{aiError}</p>}
+                {aiResult && (
+                  <>
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="text-gray-700">Score:</span>
+                      <span className="text-2xl font-extrabold text-indigo-700">
+                        {aiResult.aiScore ?? "N/A"}/100
+                      </span>
+                      {typeof aiResult.aiVersion === "string" && (
+                        <span className="ml-auto text-xs text-gray-400">
+                          {aiResult.aiVersion}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <ReasonBox
+                        title="Kỹ năng bắt buộc"
+                        text={aiResult.aiReasons?.must_have_skills}
+                      />
+                      <ReasonBox
+                        title="Kinh nghiệm"
+                        text={aiResult.aiReasons?.experience}
+                      />
+                      <ReasonBox
+                        title="Phù hợp ngành"
+                        text={aiResult.aiReasons?.domain_fit}
+                      />
+                      <ReasonBox
+                        title="Chứng chỉ & yếu tố khác"
+                        text={
+                          aiResult.aiReasons?.certs_others ||
+                          aiResult.aiReasons?.error
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-col lg:flex-row gap-8">
               {/* Job Details */}
               <div className="lg:w-2/3">
@@ -349,63 +459,11 @@ const ApplyJob = () => {
                   </a>
                 </motion.div>
 
-                {/* Similar Jobs */}
-                {/* <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                  className="bg-white rounded-xl shadow-md p-6"
-                >
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">
-                    Similar Jobs
-                  </h3>
-                  <div className="space-y-4">
-                    {similarJobs.length > 0 ? (
-                      similarJobs.map((job) => (
-                        <JobCard key={job._id} job={job} compact />
-                      ))
-                    ) : (
-                      <p className="text-gray-500">No similar jobs found</p>
-                    )}
-                  </div>
-                </motion.div> */}
-
-                {/* Quick Apply */}
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                  className="bg-blue-50 border border-blue-100 rounded-xl p-6"
-                >
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">
-                    Ready to apply?
-                  </h3>
-                  <button
-                    onClick={applyHandler}
-                    disabled={isAlreadyApplied}
-                    className={`w-full px-6 py-3 rounded-lg font-semibold text-lg shadow-md transition-all ${
-                      isAlreadyApplied
-                        ? "bg-emerald-600 text-white flex items-center justify-center"
-                        : "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg"
-                    }`}
-                  >
-                    {isAlreadyApplied ? (
-                      <>
-                        <FiCheckCircle className="mr-2" />
-                        Application Submitted
-                      </>
-                    ) : (
-                      "Apply Now"
-                    )}
-                  </button>
-                  {!userData?.resume && !isAlreadyApplied && (
-                    <p className="mt-3 text-sm text-blue-800">
-                      Don't forget to upload your resume first
-                    </p>
-                  )}
-                </motion.div>
+                {/* Similar Jobs (tuỳ bật lại) */}
+                {/* ... */}
               </div>
             </div>
+
             {/* Nút báo cáo vi phạm */}
             <button
               onClick={() => setShowReportForm(true)}
@@ -495,5 +553,15 @@ const ApplyJob = () => {
     </>
   );
 };
+
+function ReasonBox({ title, text }) {
+  if (!text) return null;
+  return (
+    <div className="border rounded-lg p-4">
+      <div className="font-semibold text-gray-800 mb-1">{title}</div>
+      <div className="text-gray-600 whitespace-pre-line">{String(text)}</div>
+    </div>
+  );
+}
 
 export default ApplyJob;

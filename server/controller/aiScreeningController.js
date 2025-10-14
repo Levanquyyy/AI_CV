@@ -63,6 +63,12 @@ export async function screenApplication(req, res) {
       "application/pdf"
     );
 
+    if (!cvText?.trim()) {
+      return res.status(400).json({
+        message:
+          "CV text is empty or unreadable. Please re-upload a clearer PDF/DOCX.",
+      });
+    }
     // Lấy Job Description
     const job = await Job.findById(application.jobId);
     if (!job) {
@@ -85,55 +91,58 @@ export async function screenApplication(req, res) {
       max_tokens: 2000,
     });
 
-    const raw = completion.choices?.[0]?.message?.content || '{}';
-    
+    const raw = completion.choices?.[0]?.message?.content || "{}";
+
     // Debug: Log raw response từ AI
-    console.log('=== AI RAW RESPONSE ===');
+    console.log("=== AI RAW RESPONSE ===");
     console.log(raw);
-    console.log('=== END AI RESPONSE ===');
-    
+    console.log("=== END AI RESPONSE ===");
+
     // Parse JSON response
     let parsed;
     try {
       parsed = JSON.parse(raw);
-      console.log('✅ Successfully parsed JSON:', parsed);
+      console.log("✅ Successfully parsed JSON:", parsed);
     } catch (parseError) {
-      console.log('❌ JSON Parse Error:', parseError.message);
-      
+      console.log("❌ JSON Parse Error:", parseError.message);
+
       // Fallback 1: Tìm JSON trong markdown code block
       const markdownMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
       if (markdownMatch) {
         try {
           parsed = JSON.parse(markdownMatch[1]);
-          console.log('✅ Markdown JSON parse success:', parsed);
+          console.log("✅ Markdown JSON parse success:", parsed);
         } catch (markdownError) {
-          console.log('❌ Markdown parse failed:', markdownError.message);
+          console.log("❌ Markdown parse failed:", markdownError.message);
         }
       }
-      
+
       // Fallback 2: Tìm JSON object trong text
       if (!parsed) {
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
             parsed = JSON.parse(jsonMatch[0]);
-            console.log('✅ Fallback JSON parse success:', parsed);
+            console.log("✅ Fallback JSON parse success:", parsed);
           } catch (fallbackError) {
-            console.log('❌ Fallback parse also failed:', fallbackError.message);
+            console.log(
+              "❌ Fallback parse also failed:",
+              fallbackError.message
+            );
           }
         }
       }
-      
+
       // Fallback 3: Tạo response lỗi
       if (!parsed) {
-        parsed = { 
-          extract: null, 
-          score: null, 
-          reasons: { 
-            error: 'Failed to parse AI response', 
+        parsed = {
+          extract: null,
+          score: null,
+          reasons: {
+            error: "Failed to parse AI response",
             rawResponse: raw.substring(0, 200),
-            parseError: parseError.message
-          } 
+            parseError: parseError.message,
+          },
         };
       }
     }

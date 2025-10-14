@@ -4,7 +4,7 @@ import JobApplication from "../models/JobApplication.js";
 import Job from "../models/Job.js";
 import { v2 } from "cloudinary";
 import { logActivity } from "../utils/activity.js";
-
+import { uploadResumeRaw } from "../utils/uploadResumeRaw.js";
 // Get user Data
 export const getUserData = async (req, res) => {
   const userId = req.auth.userId;
@@ -31,6 +31,7 @@ export const applyForJob = async (req, res) => {
   const userId = req.auth.userId;
 
   try {
+    const userDoc = await User.findById(userId).select("name email");
     const isAlreadyApplied = await JobApplication.findOne({ userId, jobId });
 
     if (isAlreadyApplied) {
@@ -54,14 +55,18 @@ export const applyForJob = async (req, res) => {
     });
     logActivity({
       action: "application.created",
-      message: `User ${userId} apply job ${jobData.title}`,
+      message: `User ${userDoc?.name || userId} apply job ${jobData.title}`,
       actorType: "user",
       actorId: userId,
+      actorName: userDoc?.name || "",
       targetType: "job",
       targetId: jobData._id.toString(),
       targetName: jobData.title,
       req,
-      meta: { companyId: jobData.companyId?.toString?.() },
+      meta: {
+        companyId: jobData.companyId?.toString?.(),
+        actorEmail: userDoc?.email || undefined,
+      },
     });
     res.json({ success: true, message: "Applied Successfully" });
   } catch (error) {
@@ -97,24 +102,33 @@ export const updateUserResume = async (req, res) => {
   try {
     const userId = req.auth.userId;
     const resumeFile = req.file;
-    if (!resumeFile)
+    if (!resumeFile) {
       return res.json({ success: false, message: "No resume file provided" });
+    }
 
     const userData = await User.findById(userId);
     if (!userData)
       return res.json({ success: false, message: "User not found" });
 
     // Upload: để Cloudinary tự nhận dạng PDF. (Có thể đặt 'raw' – xem ghi chú bên dưới)
-    const base64 = `data:${
-      resumeFile.mimetype
-    };base64,${resumeFile.buffer.toString("base64")}`;
-    const uploaded = await v2.uploader.upload(base64, {
-      resource_type: "auto",
-      folder: "resumes",
-      public_id: `resume_${userId}_${Date.now()}`,
+    // const base64 = `data:${
+    //   resumeFile.mimetype
+    // };base64,${resumeFile.buffer.toString("base64")}`;
+
+    // const uploaded = await v2.uploader.upload(base64, {
+    //   resource_type: "auto",
+    //   folder: "resumes",
+    //   public_id: `resume_${userId}_${Date.now()}`,
+    // });
+    // userData.resume = uploaded.secure_url; // Lưu thẳng URL public
+    const isPdf = resumeFile.mimetype?.includes("pdf");
+    const url = await uploadResumeRaw(resumeFile.buffer, {
+      userId,
+      mimetype: resumeFile.mimetype,
     });
 
-    userData.resume = uploaded.secure_url; // Lưu thẳng URL public
+    userData.resume = url;
+
     await userData.save();
 
     return res.json({
@@ -123,7 +137,11 @@ export const updateUserResume = async (req, res) => {
       resumeUrl: userData.resume,
     });
   } catch (err) {
-    console.error("updateUserResume", err);
-    return res.json({ success: false, message: err.message });
+    // Ghi log rõ ràng hơn: lỗi Cloudinary / lỗi mimetype / lỗi mạng
+    const msg = err?.http_code
+      ? `Cloudinary error ${err.http_code}: ${err.message || "Upload failed"}`
+      : err?.message || "Upload failed";
+    console.error("updateUserResume:", msg);
+    return res.json({ success: false, message: msg });
   }
 };

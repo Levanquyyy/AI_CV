@@ -8,8 +8,13 @@ export const makeAdminApi = (backendUrl, adminToken) => {
   });
 
   return {
-    /* ----------------------------- Tổng quan ----------------------------- */
-    getOverview: () => http.get("/overview"),
+    //* ----------------------------- Tổng quan / Statistics ----------------------------- */
+    // thống kê mở rộng
+    getStatistics: () => http.get("/statistics"),
+    // thống kê nền tảng cũ (có totalUsers, totalJobs, pendingHR, ...)
+    getStatsBase: () => http.get("/stats"),
+    // lấy job theo trạng thái (để đếm approved/pending/rejected)
+    getJobsByStatus: (status) => http.get(`/jobs`, { params: { status } }),
 
     /* ----------------------------- HR Management ----------------------------- */
     getHRPending: () => http.get("/hr"),

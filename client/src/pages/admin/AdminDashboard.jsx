@@ -27,28 +27,90 @@ const AdminDashboard = ({ api }) => {
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.getOverview();
-        setStats(data.stats);
-        setJobStatsData(data.jobStatsData || []);
-        setLoginStatsData(data.loginStatsData || []);
-        setJobStatusData(data.jobStatusData || []);
-      } catch {
-        // nếu chưa có endpoint có thể bỏ qua
+        // Gọi thống kê mở rộng + thống kê cơ bản
+        const [statsNewRes, statsBaseRes] = await Promise.all([
+          api.getStatistics(), // /statistics
+          api.getStatsBase(), // /stats
+        ]);
+
+        const sNew = statsNewRes?.data || {};
+        const sBase = statsBaseRes?.data || {};
+
+        const summary = sNew.summary || {};
+        const trends = sNew.trends || {};
+        const base = sBase.data || {};
+
+        // Chuẩn hoá object stats cho 4 thẻ trên cùng
+        const mergedStats = {
+          totalUsers: base.totalUsers ?? 0,
+          newUsersThisMonth: summary.newUsers ?? 0, // thực tế là 7 ngày gần nhất từ BE mới
+          totalJobs: base.totalJobs ?? 0,
+          pendingApproval: base.pendingHR ?? 0, // “Chờ duyệt”: HR pending
+          reportedJobs: summary.reportedJobCount ?? 0,
+        };
+        setStats(mergedStats);
+
+        // LineChart: jobs theo ngày (7 ngày)
+        const jobsPerDay = Array.isArray(trends.jobsPerDay)
+          ? trends.jobsPerDay.map((d) => ({
+              name: d?._id || "", // yyyy-MM-dd
+              jobs: d?.count ?? 0,
+              users: 0, // chưa có usersPerDay từ BE mới -> để 0
+            }))
+          : [];
+        setJobStatsData(jobsPerDay);
+
+        // BarChart: logins theo ngày (7 ngày)
+        const loginsPerDay = Array.isArray(trends.loginsPerDay)
+          ? trends.loginsPerDay.map((d) => ({
+              name: d?._id || "",
+              logins: d?.count ?? 0,
+            }))
+          : [];
+        setLoginStatsData(loginsPerDay);
+
+        // Gọi thêm 3 request để đếm job theo trạng thái
+        const [approvedRes, pendingRes, rejectedRes] = await Promise.all([
+          api.getJobsByStatus("approved"),
+          api.getJobsByStatus("pending"),
+          api.getJobsByStatus("rejected"),
+        ]);
+
+        const approvedCount =
+          approvedRes?.data?.meta?.total ??
+          approvedRes?.data?.data?.length ??
+          0;
+        const pendingCount =
+          pendingRes?.data?.meta?.total ?? pendingRes?.data?.data?.length ?? 0;
+        const rejectedCount =
+          rejectedRes?.data?.meta?.total ??
+          rejectedRes?.data?.data?.length ??
+          0;
+
+        setJobStatusData([
+          { name: "Approved", value: approvedCount, color: "#10b981" },
+          { name: "Pending", value: pendingCount, color: "#f59e0b" },
+          { name: "Rejected", value: rejectedCount, color: "#ef4444" },
+        ]);
+      } catch (e) {
+        // có thể im lặng nếu endpoint chưa sẵn sàng
+        // console.error(e);
       }
     })();
-  }, []);
+  }, [api]);
 
   if (!stats) return null;
 
   return (
     <div className="space-y-6">
+      {/* 4 thẻ thống kê nhanh */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <CardStat
           iconBg="bg-blue-100"
           Icon={Users}
           title="Tổng người dùng"
           value={stats.totalUsers}
-          sub={`+${stats.newUsersThisMonth} tháng này`}
+          sub={`+${stats.newUsersThisMonth} (7 ngày gần đây)`}
           subColor="text-green-600"
         />
         <CardStat
@@ -61,7 +123,7 @@ const AdminDashboard = ({ api }) => {
         <CardStat
           iconBg="bg-orange-100"
           Icon={Clock}
-          title="Chờ duyệt"
+          title="HR chờ duyệt"
           value={stats.pendingApproval}
           sub="Cần xử lý"
           subColor="text-orange-600"
@@ -76,6 +138,7 @@ const AdminDashboard = ({ api }) => {
         />
       </div>
 
+      {/* Line: Jobs & Users (users hiện để 0 nếu BE chưa trả usersPerDay) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -105,6 +168,8 @@ const AdminDashboard = ({ api }) => {
             </LineChart>
           </ResponsiveContainer>
         </div>
+
+        {/* Bar: Lượt đăng nhập */}
         <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">
             Lượt đăng nhập
@@ -122,6 +187,7 @@ const AdminDashboard = ({ api }) => {
         </div>
       </div>
 
+      {/* Pie: Phân bổ trạng thái job */}
       <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Phân bổ trạng thái tin tuyển dụng
@@ -141,12 +207,7 @@ const AdminDashboard = ({ api }) => {
                 dataKey="value"
               >
                 {jobStatusData.map((entry, idx) => (
-                  <Cell
-                    key={idx}
-                    fill={
-                      entry.color || ["#10b981", "#f59e0b", "#ef4444"][idx % 3]
-                    }
-                  />
+                  <Cell key={idx} fill={entry.color} />
                 ))}
               </Pie>
               <Tooltip />
