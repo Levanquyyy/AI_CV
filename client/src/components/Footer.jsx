@@ -415,7 +415,7 @@ const Footer = () => {
       <div className="mt-10 h-1 w-full bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-600 background-animate"></div>
 
       {/* Add this to your global CSS */}
-      <style jsx>{`
+      <style>{`
         .background-animate {
           background-size: 200%;
           animation: gradient 8s ease infinite;

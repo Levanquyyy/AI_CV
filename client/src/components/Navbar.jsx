@@ -127,7 +127,7 @@ const Navbar = () => {
       </div>
 
       {/* Add this to your tailwind.config.js or CSS file */}
-      <style jsx>{`
+      <style>{`
         @keyframes slideDown {
           from {
             transform: translateY(-100%);

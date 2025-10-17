@@ -4,7 +4,14 @@ import Job from "../models/Job.js";
 import JobApplication from "../models/JobApplication.js";
 import { extractTextFromCloudinary } from "../utils/cvExtract.js";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
+  defaultHeaders: {
+    "HTTP-Referer": "http://localhost:5173",
+    "X-Title": "CV Screening Project",
+  },
+});
 
 function buildPrompt({ jd, cvText }) {
   return `
@@ -85,7 +92,7 @@ export async function screenApplication(req, res) {
     // ... existing code ...
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-3.5-turbo",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 2000,
@@ -171,7 +178,7 @@ export async function screenApplication(req, res) {
   } catch (error) {
     console.error("AI Screening Error:", error);
     return res.status(500).json({
-      message: "AI screening failed",
+      message: "http://localhost:5000/api/users/applications/screen",
       error: error.message,
     });
   }
