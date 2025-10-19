@@ -43,11 +43,33 @@ const JobCard = ({
     return "Just now";
   };
 
+  const toViNumber = (n) => {
+    const num = Number(n);
+    if (!Number.isFinite(num)) return String(n ?? "");
+    return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(
+      num
+    );
+  };
+
   const formatSalary = (salary) => {
-    if (!salary) return "Salary available";
-    if (typeof salary === "string") return salary;
-    if (salary.min && salary.max) return `$${salary.min} - $${salary.max}`;
-    return `$${salary.amount}`;
+    if (salary == null || salary === "") return "Salary available";
+
+    if (typeof salary === "string") {
+      const numeric = Number(salary.replace(/[^\d.-]/g, ""));
+      return Number.isFinite(numeric) ? toViNumber(numeric) : salary;
+    }
+
+    if (typeof salary === "number") return toViNumber(salary);
+
+    if (typeof salary === "object") {
+      const { min, max } = salary || {};
+      const hasMin = Number.isFinite(Number(min));
+      const hasMax = Number.isFinite(Number(max));
+      if (hasMin && hasMax) return `${toViNumber(min)} - ${toViNumber(max)}`;
+      if (hasMin) return `Từ ${toViNumber(min)}`;
+      if (hasMax) return `Đến ${toViNumber(max)}`;
+    }
+    return String(salary);
   };
 
   return (
@@ -81,10 +103,13 @@ const JobCard = ({
                 />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-zinc-800">
+                {/* Title: clamp 2 dòng + giữ chiều cao 2 dòng */}
+                <h3 className="text-lg font-bold text-zinc-800 line-clamp-2 min-h-[3.5rem]">
                   {job.title || "Job Title"}
                 </h3>
-                <p className="text-sm text-gray-500">
+
+                {/* Company name: nếu cũng muốn 2 dòng, đổi text-sm -> line-height 1.25rem ⇒ min-h 2.5rem */}
+                <p className="text-sm text-gray-500 line-clamp-2 min-h-[2.5rem]">
                   {job.companyId?.name || "Company"}
                 </p>
               </div>
@@ -111,7 +136,8 @@ const JobCard = ({
               <FiBriefcase className="text-sm" /> {job.level || "Intermediate"}
             </span>
             <span className="flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600">
-              <FiDollarSign className="text-sm" /> {formatSalary(job.salary)}
+              <FiDollarSign className="text-sm" /> {formatSalary(job.salary)}{" "}
+              vnđ
             </span>
             {job.type && (
               <span className="flex items-center gap-1 px-3 py-1 rounded-full bg-orange-50 text-orange-600">
@@ -170,7 +196,7 @@ const JobCard = ({
               >
                 Learn More
               </button>
-              <button
+              {/* <button
                 onClick={() => {
                   navigate(`/apply-job/${job._id}`);
                   window.scrollTo(0, 0);
@@ -178,7 +204,7 @@ const JobCard = ({
                 className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 transition-all duration-300 rounded-md hover:shadow-md"
               >
                 Apply Now
-              </button>
+              </button> */}
             </div>
           </div>
         </div>

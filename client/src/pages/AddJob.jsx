@@ -394,9 +394,9 @@ const AddJob = () => {
                   </div>
                   <div className="text-right">
                     <span className="text-lg font-bold text-gray-900">
-                      ${salary.toLocaleString()}
+                      {salary.toLocaleString()} vnđ
                     </span>
-                    <p className="text-sm text-gray-500">per year</p>
+                    <p className="text-sm text-gray-500">per month</p>
                   </div>
                 </div>
 

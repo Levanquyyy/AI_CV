@@ -92,58 +92,84 @@ const RecruiterLogin = () => {
 
     try {
       if (state === "Login") {
-        const { data } = await axios.post(backendUrl + "/api/company/login", {
-          email,
-          password,
-        });
+        // ✅ Không throw khi 4xx để tự xử lý
+        const res = await axios.post(
+          backendUrl + "/api/company/login",
+          { email, password },
+          { validateStatus: () => true }
+        );
 
-        if (data.success) {
+        const { status, data } = res;
+
+        if (status === 200 && data?.success) {
           setCompanyData(data.company);
           setCompanyToken(data.token);
           localStorage.setItem("companyToken", data.token);
-          toast.success("Login successful! Redirecting to dashboard...");
+          toast.success("Đăng nhập thành công! Đang chuyển đến dashboard...");
           setTimeout(() => {
             setShowRecruiterLogin(false);
             navigate("/dashboard");
           }, 1000);
+          return;
+        }
+
+        // ❗️Mapping thông điệp theo status/message của backend
+        if (status === 400) {
+          // Backend trả "Invalid email or password"
+          toast.error("Mật khẩu hoặc tài khoản của bạn chưa đúng");
+        } else if (status === 403) {
+          const msg = (data && data.message) || "";
+          if (msg.toLowerCase().includes("rejected")) {
+            toast.error(
+              "Tài khoản của bạn bị admin từ chối, vui lòng liên hệ admin để biết thêm chi tiết"
+            );
+          } else if (msg.toLowerCase().includes("pending")) {
+            toast.info("Tài khoản của bạn đang chờ admin xét duyệt");
+          } else {
+            toast.error(msg || "Không thể đăng nhập. Vui lòng thử lại sau");
+          }
         } else {
-          toast.error(
-            data.message || "Login failed. Please check your credentials."
-          );
+          toast.error(data?.message || "Lỗi server. Vui lòng thử lại sau");
         }
       } else {
+        // ====== Sign Up ======
         const formData = new FormData();
         formData.append("name", name);
         formData.append("email", email);
         formData.append("password", password);
         if (image) formData.append("image", image);
 
-        const { data } = await axios.post(
+        const res = await axios.post(
           `${backendUrl}/api/company/register`,
           formData,
           {
             headers: { "Content-Type": "multipart/form-data" },
+            validateStatus: () => true,
           }
         );
 
-        if (data.success) {
-          // ✅ Kiểm tra trạng thái company trả về
-          if (data.company.status === "pending") {
+        const { status, data } = res;
+
+        if (status === 200 && data?.success) {
+          if (data.company?.status === "pending") {
             toast.info("Hiện chưa thể đăng nhập. Vui lòng chờ xét duyệt.");
-            // ❌ Không lưu token, không navigate
           } else {
-            // Nếu admin đã duyệt sẵn (hiếm)
             setCompanyToken(data.token);
             setCompanyData(data.company);
             toast.success("Đăng ký thành công!");
             navigate("/dashboard");
           }
         } else {
-          toast.error(data.message || "Đăng ký thất bại");
+          toast.error(data?.message || "Đăng ký thất bại");
         }
       }
     } catch (error) {
-      toast.error(error.message || "Lỗi server khi đăng ký");
+      // 🔒 Fallback khi có lỗi không mong muốn (mạng, JS, v.v.)
+      if (state === "Login") {
+        toast.error("Không thể đăng nhập do lỗi kết nối. Vui lòng thử lại");
+      } else {
+        toast.error("Lỗi server khi đăng ký. Vui lòng thử lại");
+      }
     } finally {
       setIsLoading(false);
     }
