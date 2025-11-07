@@ -14,6 +14,7 @@ import { clerkMiddleware } from "@clerk/express";
 import adminRoutes from "./routes/adminRoutes.js";
 import ensureDefaultAdmin from "./config/seedAdmin.js";
 import reportRoutes from "./routes/reportRoutes.js";
+import analyticsRoutes from "./routes/analyticsRoutes.js";
 // Initialize Express
 const app = express();
 
@@ -40,6 +41,7 @@ app.use("/api/jobs", JobRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/analytics", analyticsRoutes);
 // Start the server
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Server running on port ${port}`));

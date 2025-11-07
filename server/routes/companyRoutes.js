@@ -9,6 +9,7 @@ import {
   postJob,
   registerCompany,
 } from "../controller/comapanyController.js";
+import { updateApplicationStatus } from "../controller/applicationController.js";
 import { uploadImage } from "../config/multer.js";
 import { protectCompany } from "../middleware/authMiddleware.js";
 
@@ -47,6 +48,13 @@ router.get("/applicants", protectCompany, getCompanyJobApplicants);
 
 // Get company Job List
 router.get("/list-jobs", protectCompany, getCompanyPostedJobs);
+
+// Update application status (accept/reject)
+router.patch(
+  "/applications/:applicationId/status",
+  protectCompany,
+  updateApplicationStatus
+);
 
 // Change Applications Status
 router.post("/change-status", protectCompany, ChangeJobApplicationStatus);
