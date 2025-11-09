@@ -9,13 +9,30 @@ import {
   postJob,
   registerCompany,
 } from "../controller/comapanyController.js";
-import upload from "../config/multer.js";
+import { updateApplicationStatus } from "../controller/applicationController.js";
+import { uploadImage } from "../config/multer.js";
 import { protectCompany } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
 // Register a company
-router.post("/register", upload.single("image"), registerCompany);
+router.post(
+  "/register",
+  uploadImage.single("image"),
+  (err, req, res, next) => {
+    if (err instanceof multer.MulterError) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        return res.json({
+          success: false,
+          message: "Ảnh quá lớn. Tối đa 3MB.",
+        });
+      }
+    }
+    if (err) return res.json({ success: false, message: err.message });
+    next();
+  },
+  registerCompany
+);
 
 // Company Login
 router.post("/login", loginCompany);
@@ -31,6 +48,13 @@ router.get("/applicants", protectCompany, getCompanyJobApplicants);
 
 // Get company Job List
 router.get("/list-jobs", protectCompany, getCompanyPostedJobs);
+
+// Update application status (accept/reject)
+router.patch(
+  "/applications/:applicationId/status",
+  protectCompany,
+  updateApplicationStatus
+);
 
 // Change Applications Status
 router.post("/change-status", protectCompany, ChangeJobApplicationStatus);

@@ -4,7 +4,14 @@ import Job from "../models/Job.js";
 import JobApplication from "../models/JobApplication.js";
 import { extractTextFromCloudinary } from "../utils/cvExtract.js";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: "https://openrouter.ai/api/v1",
+  defaultHeaders: {
+    "HTTP-Referer": "http://localhost:5173",
+    "X-Title": "CV Screening Project",
+  },
+});
 
 function buildPrompt({ jd, cvText }) {
   return `
@@ -63,6 +70,12 @@ export async function screenApplication(req, res) {
       "application/pdf"
     );
 
+    if (!cvText?.trim()) {
+      return res.status(400).json({
+        message:
+          "CV text is empty or unreadable. Please re-upload a clearer PDF/DOCX.",
+      });
+    }
     // Lấy Job Description
     const job = await Job.findById(application.jobId);
     if (!job) {
@@ -79,61 +92,64 @@ export async function screenApplication(req, res) {
     // ... existing code ...
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-3.5-turbo",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 2000,
     });
 
-    const raw = completion.choices?.[0]?.message?.content || '{}';
-    
+    const raw = completion.choices?.[0]?.message?.content || "{}";
+
     // Debug: Log raw response từ AI
-    console.log('=== AI RAW RESPONSE ===');
+    console.log("=== AI RAW RESPONSE ===");
     console.log(raw);
-    console.log('=== END AI RESPONSE ===');
-    
+    console.log("=== END AI RESPONSE ===");
+
     // Parse JSON response
     let parsed;
     try {
       parsed = JSON.parse(raw);
-      console.log('✅ Successfully parsed JSON:', parsed);
+      console.log("✅ Successfully parsed JSON:", parsed);
     } catch (parseError) {
-      console.log('❌ JSON Parse Error:', parseError.message);
-      
+      console.log("❌ JSON Parse Error:", parseError.message);
+
       // Fallback 1: Tìm JSON trong markdown code block
       const markdownMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
       if (markdownMatch) {
         try {
           parsed = JSON.parse(markdownMatch[1]);
-          console.log('✅ Markdown JSON parse success:', parsed);
+          console.log("✅ Markdown JSON parse success:", parsed);
         } catch (markdownError) {
-          console.log('❌ Markdown parse failed:', markdownError.message);
+          console.log("❌ Markdown parse failed:", markdownError.message);
         }
       }
-      
+
       // Fallback 2: Tìm JSON object trong text
       if (!parsed) {
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
             parsed = JSON.parse(jsonMatch[0]);
-            console.log('✅ Fallback JSON parse success:', parsed);
+            console.log("✅ Fallback JSON parse success:", parsed);
           } catch (fallbackError) {
-            console.log('❌ Fallback parse also failed:', fallbackError.message);
+            console.log(
+              "❌ Fallback parse also failed:",
+              fallbackError.message
+            );
           }
         }
       }
-      
+
       // Fallback 3: Tạo response lỗi
       if (!parsed) {
-        parsed = { 
-          extract: null, 
-          score: null, 
-          reasons: { 
-            error: 'Failed to parse AI response', 
+        parsed = {
+          extract: null,
+          score: null,
+          reasons: {
+            error: "Failed to parse AI response",
             rawResponse: raw.substring(0, 200),
-            parseError: parseError.message
-          } 
+            parseError: parseError.message,
+          },
         };
       }
     }
@@ -162,7 +178,7 @@ export async function screenApplication(req, res) {
   } catch (error) {
     console.error("AI Screening Error:", error);
     return res.status(500).json({
-      message: "AI screening failed",
+      message: "http://localhost:5000/api/users/applications/screen",
       error: error.message,
     });
   }
