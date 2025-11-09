@@ -161,10 +161,14 @@ export const loginCompany = async (req, res) => {
 // 🧾 Get Company Data
 export const getCompanyData = async (req, res) => {
   const company = req.company;
+
   try {
-    res.json({ success: true, company });
+    res.json({ sucess: true, company });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    res.json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
