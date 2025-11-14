@@ -16,12 +16,77 @@ import {
   MoreHorizontal,
   Search,
 } from "lucide-react";
+import ReactDOM from "react-dom";
+const DropdownMenu = ({ anchorEl, onAccept, onReject, onClose }) => {
+  const menuRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
 
+  useEffect(() => {
+    if (!anchorEl) return;
+    const rect = anchorEl.getBoundingClientRect();
+    // độ rộng menu 160px -> canh mép phải nút
+    const width = 160;
+    setPos({
+      top: rect.bottom + window.scrollY + 8, // cách nút 8px
+      left: rect.right + window.scrollX - width,
+    });
+  }, [anchorEl]);
+
+  useEffect(() => {
+    const onDown = (e) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target) &&
+        anchorEl &&
+        !anchorEl.contains(e.target)
+      ) {
+        onClose?.();
+      }
+    };
+    const onEsc = (e) => e.key === "Escape" && onClose?.();
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onEsc);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onEsc);
+    };
+  }, [anchorEl, onClose]);
+
+  return ReactDOM.createPortal(
+    <div
+      ref={menuRef}
+      style={{
+        position: "absolute",
+        top: pos.top,
+        left: pos.left,
+        zIndex: 9999,
+      }}
+      className="w-40 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden"
+    >
+      <button
+        onClick={onAccept}
+        className="w-full px-4 py-3 text-left text-sm font-medium text-green-600 hover:bg-green-50 flex items-center gap-2 transition-colors"
+      >
+        <Check size={16} />
+        Accept
+      </button>
+      <button
+        onClick={onReject}
+        className="w-full px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
+      >
+        <X size={16} />
+        Reject
+      </button>
+    </div>,
+    document.body
+  );
+};
 const ViewApplications = () => {
   const { backendUrl, companyToken } = useContext(AppContext);
   const [applicants, setApplicants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeDropdown, setActiveDropdown] = useState(null);
+  const buttonRefs = useRef({});
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const menuRef = useRef(null);
@@ -47,17 +112,26 @@ const ViewApplications = () => {
 
   const changeJobApplicationStatus = async (id, status) => {
     try {
-      const { data } = await axios.post(
-        `${backendUrl}/api/company/change-status`,
-        { id, status },
-        { headers: { token: companyToken } }
+      // Gọi API để cập nhật trạng thái và gửi email
+      const response = await axios.patch(
+        `${backendUrl}/api/company/applications/status`,
+        {
+          id,
+          status,
+        },
+        {
+          headers: { token: companyToken },
+        }
       );
 
-      if (data.success) {
+      if (response.data.success) {
         fetchCompanyJobApplications();
         toast.success(`Application ${status.toLowerCase()} successfully`);
+        if (response.data.message.includes("email")) {
+          toast.info("Notification email sent to candidate");
+        }
       } else {
-        toast.error(data.message);
+        toast.error(response.data.message || "Update failed");
       }
     } catch (error) {
       toast.error(error.message);
@@ -351,6 +425,7 @@ const ViewApplications = () => {
                         {applicant.status === "pending" ? (
                           <div className="relative">
                             <button
+                              ref={(el) => (buttonRefs.current[index] = el)}
                               onClick={() =>
                                 setActiveDropdown(
                                   activeDropdown === index ? null : index
@@ -364,41 +439,24 @@ const ViewApplications = () => {
 
                             <AnimatePresence>
                               {activeDropdown === index && (
-                                <motion.div
-                                  ref={menuRef}
-                                  initial={{ opacity: 0, y: 10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: 10 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="absolute right-0 top-full mt-1 z-50 w-40 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden"
-                                >
-                                  <button
-                                    onClick={() => {
-                                      changeJobApplicationStatus(
-                                        applicant._id,
-                                        "Accepted"
-                                      );
-                                      setActiveDropdown(null);
-                                    }}
-                                    className="w-full px-4 py-3 text-left text-sm font-medium text-green-600 hover:bg-green-50 flex items-center gap-2 transition-colors"
-                                  >
-                                    <Check size={16} />
-                                    Accept
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      changeJobApplicationStatus(
-                                        applicant._id,
-                                        "Rejected"
-                                      );
-                                      setActiveDropdown(null);
-                                    }}
-                                    className="w-full px-4 py-3 text-left text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-2 transition-colors"
-                                  >
-                                    <X size={16} />
-                                    Reject
-                                  </button>
-                                </motion.div>
+                                <DropdownMenu
+                                  anchorEl={buttonRefs.current[index]}
+                                  onClose={() => setActiveDropdown(null)}
+                                  onAccept={() => {
+                                    changeJobApplicationStatus(
+                                      applicant._id,
+                                      "Accepted"
+                                    );
+                                    setActiveDropdown(null);
+                                  }}
+                                  onReject={() => {
+                                    changeJobApplicationStatus(
+                                      applicant._id,
+                                      "Rejected"
+                                    );
+                                    setActiveDropdown(null);
+                                  }}
+                                />
                               )}
                             </AnimatePresence>
                           </div>
