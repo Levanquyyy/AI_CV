@@ -7,6 +7,9 @@ import JobApplication from "../models/JobApplication.js";
 import { uploadBufferToCloudinary } from "../utils/cloudinaryUpload.js";
 import jwt from "jsonwebtoken";
 import { logActivity } from "../utils/activity.js";
+import User from "../models/User.js";
+import nodemailer from "nodemailer";
+import { sendEmail } from "../utils/email.js";
 // 🧩 Register a new Company (HR)
 export const registerCompany = async (req, res) => {
   try {
@@ -235,12 +238,35 @@ export const getCompanyPostedJobs = async (req, res) => {
 
 // 🔄 Change Job Application Status
 export const ChangeJobApplicationStatus = async (req, res) => {
+  const { id, status } = req.body; // Nhận id của ứng viên và trạng thái (Accepted / Rejected)
+
   try {
-    const { id, status } = req.body;
-    await JobApplication.findOneAndUpdate({ _id: id }, { status });
-    res.json({ success: true, message: "Status changed" });
+    // Cập nhật trạng thái ứng tuyển
+    const application = await JobApplication.findById(id);
+    if (!application) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+
+    application.status = status;
+    await application.save();
+
+    // Gửi email cho ứng viên
+    const user = await User.findById(application.userId);
+    if (user) {
+      const subject = `Your application status: ${status}`;
+      const text = `Dear ${user.name},\n\nYour application for the position of ${application.jobId.title} has been ${status}.\n\nBest regards,\nHR Team`;
+
+      await sendEmail(user.email, subject, text); // Gửi email
+    }
+
+    res.json({
+      success: true,
+      message: `Application ${status.toLowerCase()} successfully`,
+    });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
 

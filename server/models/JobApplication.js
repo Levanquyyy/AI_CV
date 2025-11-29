@@ -15,6 +15,6 @@ const JobApplicationSchema = new mongoose.Schema({
      aiReviewed: { type: Boolean, default: false }
 })
 
-const JobApplication = mongoose.model('JobApplication', JobApplicationSchema)
+const JobApplication = mongoose.model('jobapplications', JobApplicationSchema)
 
 export default JobApplication;

@@ -57,7 +57,13 @@ router.patch(
 );
 
 // Change Applications Status
-router.post("/change-status", protectCompany, ChangeJobApplicationStatus);
+// router.post("/change-status", protectCompany, ChangeJobApplicationStatus);
+
+router.patch(
+  "/applications/status",
+  protectCompany,
+  ChangeJobApplicationStatus
+);
 
 // Change Applications Visiblity
 router.post("/change-visibility", protectCompany, changeVisiblity);

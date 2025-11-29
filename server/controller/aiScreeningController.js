@@ -15,32 +15,44 @@ const openai = new OpenAI({
 
 function buildPrompt({ jd, cvText }) {
   return `
-Bạn là HR AI chuyên nghiệp. Phân tích CV và Job Description, trả về CHÍNH XÁC JSON theo format sau (KHÔNG có markdown, KHÔNG có \`\`\`json):
+Bạn là HR AI chuyên nghiệp. Phân tích CV và Job Description một cách NGHIÊM NGẶT.
+
+**QUY TẮC CHẤM ĐIỂM:**
+- Nếu Job Description không rõ ràng, thiếu thông tin hoặc chỉ có văn bản vô nghĩa → điểm tối đa 20
+- Nếu CV không match với yêu cầu cụ thể → giảm 15-30 điểm/mỗi yêu cầu thiếu
+- Yêu cầu BẮT BUỘC trong JD phải xuất hiện trong CV → nếu thiếu giảm 40 điểm
+- Kinh nghiệm < yêu cầu → giảm 20 điểm
+- Không có chứng chỉ liên quan → giảm 10 điểm
+
+Trả về CHÍNH XÁC JSON (KHÔNG markdown):
 
 {
   "extract": {
     "name": "tên ứng viên",
-    "years_experience": "số_năm_kinh_nghiệm",
+    "years_experience": "số năm (VD: 3)",
     "skills": ["kỹ năng 1", "kỹ năng 2"],
     "education": "học vấn",
     "certifications": ["chứng chỉ 1"],
     "languages": ["ngôn ngữ 1"],
     "notable_projects": ["dự án 1"]
   },
-  "score": "điểm_số_từ_0_đến_100",
+  "score": số_từ_0_đến_100,
   "reasons": {
-    "must_have_skills": "đánh giá kỹ năng bắt buộc",
-    "experience": "đánh giá kinh nghiệm",
+    "must_have_skills": "đánh giá chi tiết (nếu JD không rõ, ghi: 'JD không có yêu cầu rõ ràng - điểm thấp')",
+    "experience": "đánh giá kinh nghiệm so với JD",
     "domain_fit": "đánh giá phù hợp ngành",
-    "certs_others": "đánh giá chứng chỉ và yếu tố khác"
-  }
+    "certs_others": "đánh giá chứng chỉ"
+  },
+  "jd_quality": "good/poor/unclear"
 }
 
 JOB DESCRIPTION:
 ${jd}
 
 CV CONTENT:
-${cvText}`;
+${cvText}
+
+**LƯU Ý:** Nếu JD chỉ có 1-2 từ hoặc không rõ ràng, set "jd_quality": "poor" và "score": 10-20.`;
 }
 
 export async function screenApplication(req, res) {
@@ -106,12 +118,19 @@ export async function screenApplication(req, res) {
     console.log("=== END AI RESPONSE ===");
 
     // Parse JSON response
-    let parsed;
+     let parsed;
     try {
       parsed = JSON.parse(raw);
       console.log("✅ Successfully parsed JSON:", parsed);
+      
+      // Validate JD quality và điểm số
+      if (parsed.jd_quality === "poor" && parsed.score > 25) {
+        console.warn("⚠️ AI cho điểm cao với JD kém chất lượng, điều chỉnh xuống 15");
+        parsed.score = 15;
+        parsed.reasons.must_have_skills = "JD không đủ thông tin để đánh giá - điểm thấp";
+      }
+      
     } catch (parseError) {
-      console.log("❌ JSON Parse Error:", parseError.message);
 
       // Fallback 1: Tìm JSON trong markdown code block
       const markdownMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);

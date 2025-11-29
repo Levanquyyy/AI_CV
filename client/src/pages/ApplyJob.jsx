@@ -69,16 +69,18 @@ const ApplyJob = () => {
   };
 
   const findSimilarJobs = (currentJob) => {
-    const similar = jobs
-      .filter(
-        (job) =>
-          job._id !== currentJob._id &&
-          (job.companyId._id === currentJob.companyId._id ||
-            job.category === currentJob.category)
-      )
-      .slice(0, 4);
-    setSimilarJobs(similar);
-  };
+  const similar = jobs
+    .filter((job) => {
+      if (!job?._id || !job?.companyId?._id || !currentJob?.companyId?._id) return false;
+      return (
+        job._id !== currentJob._id &&
+        (job.companyId._id === currentJob.companyId._id ||
+          job.category === currentJob.category)
+      );
+    })
+    .slice(0, 4);
+  setSimilarJobs(similar);
+};
 
   const checkAlreadyApplied = () => {
     if (jobData && userApplications && userApplications.length > 0) {
