@@ -68,6 +68,7 @@ export const AppContextProvider = (props) => {
   const fetchUserData = async () => {
     try {
       const token = await getToken();
+      if (!token) return;
 
       const { data } = await axios.get(backendUrl + "/api/users/user", {
         headers: { Authorization: `Bearer ${token}` },
@@ -87,6 +88,7 @@ export const AppContextProvider = (props) => {
   const fetchUserApplications = async () => {
     try {
       const token = await getToken();
+      if (!token) return;
 
       const { data } = await axios.get(backendUrl + "/api/users/applications", {
         headers: { Authorization: `Bearer ${token}` },
