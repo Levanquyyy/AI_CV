@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from "react";
-import { useClerk, UserButton, useUser } from "@clerk/clerk-react";
+import { useAuth, useClerk, UserButton, useUser } from "@clerk/clerk-react";
 import { Link, useNavigate } from "react-router-dom";
 import { AppContext } from "../context/AppContext";
 import { Zap, Briefcase } from "lucide-react";
@@ -8,22 +8,38 @@ import axios from "axios";
 const Navbar = () => {
   const { openSignIn } = useClerk();
   const { user } = useUser();
+  const { getToken } = useAuth();
   const navigate = useNavigate();
   const { setShowRecruiterLogin, backendUrl } = useContext(AppContext);
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
-    if (user?.id) {
-      axios
-        .post(`${backendUrl}/api/users/after-login`, {
-          userId: user.id,
-          name:
-            user.fullName ||
-            user.username ||
-            user.primaryEmailAddress?.emailAddress,
-        })
-        .catch(() => {});
-    }
-  }, [user?.id]);
+    const syncAfterLogin = async () => {
+      if (!user?.id) return;
+
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        await axios.post(
+          `${backendUrl}/api/users/after-login`,
+          {
+            userId: user.id,
+            name:
+              user.fullName ||
+              user.username ||
+              user.primaryEmailAddress?.emailAddress,
+            email: user.primaryEmailAddress?.emailAddress || "",
+            image: user.imageUrl || "",
+          },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+      } catch (_) {}
+    };
+
+    syncAfterLogin();
+  }, [user?.id, backendUrl, getToken]);
   // Handle scroll event
   useEffect(() => {
     const handleScroll = () => {

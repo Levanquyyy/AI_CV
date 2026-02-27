@@ -7,12 +7,20 @@ import { logActivity } from "../utils/activity.js";
 import { uploadResumeRaw } from "../utils/uploadResumeRaw.js";
 // Get user Data
 export const getUserData = async (req, res) => {
-  const { userId } = req.auth();
+  const auth = req.auth();
+  const { userId } = auth;
+  const claimEmail =
+    auth?.sessionClaims?.email || auth?.sessionClaims?.email_address || "";
 
   console.log("User ID from request:", userId); // Log the user ID
 
   try {
-    const user = await User.findById(userId);
+    let user = await User.findById(userId);
+
+    // Fallback for legacy data where Clerk user id changed but email stays the same
+    if (!user && claimEmail) {
+      user = await User.findOne({ email: claimEmail });
+    }
 
     if (!user) {
       console.log("User not found in database"); // Log if user is not found
