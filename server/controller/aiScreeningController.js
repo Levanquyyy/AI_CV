@@ -5,21 +5,68 @@ import JobApplication from "../models/JobApplication.js";
 import { extractTextFromCloudinary } from "../utils/cvExtract.js";
 
 const useOpenRouter = !!process.env.OPENROUTER_API_KEY;
+const useOpenAI = !!process.env.OPENAI_API_KEY;
+const useGemini = !!process.env.GEMINI_API_KEY;
 
-const openai = new OpenAI(
-  useOpenRouter
-    ? {
-        apiKey: process.env.OPENROUTER_API_KEY,
-        baseURL: "https://openrouter.ai/api/v1",
-        defaultHeaders: {
-          "HTTP-Referer": "http://localhost:5173",
-          "X-Title": "CV Screening Project",
-        },
-      }
-    : {
-        apiKey: process.env.OPENAI_API_KEY,
-      }
-);
+const openai = useOpenRouter || useOpenAI
+  ? new OpenAI(
+      useOpenRouter
+        ? {
+            apiKey: process.env.OPENROUTER_API_KEY,
+            baseURL: "https://openrouter.ai/api/v1",
+            defaultHeaders: {
+              "HTTP-Referer": "http://localhost:5173",
+              "X-Title": "CV Screening Project",
+            },
+          }
+        : {
+            apiKey: process.env.OPENAI_API_KEY,
+          }
+    )
+  : null;
+
+async function callAI(prompt) {
+  if (useOpenRouter || useOpenAI) {
+    const completion = await openai.chat.completions.create({
+      model: useOpenRouter ? "openai/gpt-4o-mini" : "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 2000,
+    });
+
+    return {
+      raw: completion.choices?.[0]?.message?.content || "{}",
+      modelUsed: useOpenRouter ? "openrouter:gpt-4o-mini" : "openai:gpt-4o-mini",
+    };
+  }
+
+  if (useGemini) {
+    const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+      }),
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) {
+      throw new Error(data?.error?.message || `Gemini API error (${resp.status})`);
+    }
+
+    const raw =
+      data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("\n") ||
+      "{}";
+
+    return { raw, modelUsed: `gemini:${model}` };
+  }
+
+  throw new Error("Set OPENROUTER_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in server/.env");
+}
 
 function buildPrompt({ jd, cvText }) {
   return `
@@ -65,10 +112,11 @@ ${cvText}
 
 export async function screenApplication(req, res) {
   try {
-    if (!process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY) {
+    if (!process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY && !process.env.GEMINI_API_KEY) {
       return res.status(500).json({
         message: "Missing AI API key",
-        error: "Set OPENROUTER_API_KEY or OPENAI_API_KEY in server/.env",
+        error:
+          "Set OPENROUTER_API_KEY or OPENAI_API_KEY or GEMINI_API_KEY in server/.env",
       });
     }
 
@@ -118,14 +166,7 @@ export async function screenApplication(req, res) {
 
     // ... existing code ...
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
-      max_tokens: 2000,
-    });
-
-    const raw = completion.choices?.[0]?.message?.content || "{}";
+    const { raw, modelUsed } = await callAI(prompt);
 
     // Debug: Log raw response từ AI
     console.log("=== AI RAW RESPONSE ===");
@@ -195,7 +236,7 @@ export async function screenApplication(req, res) {
       aiScore: parsed.score ?? null,
       aiReasons: JSON.stringify(parsed.reasons ?? {}),
       aiExtract: parsed.extract ?? null,
-      aiVersion: "gpt-4o-mini@v1",
+      aiVersion: `${modelUsed}@v1`,
       aiReviewed: false,
     });
 
