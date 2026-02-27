@@ -25,13 +25,15 @@ const openai = useOpenRouter || useOpenAI
   )
   : null;
 
-async function callAI(prompt) {
+async function callAI(prompt, options = {}) {
+  const maxTokens = options.maxTokens || 2000;
+
   if (useOpenRouter || useOpenAI) {
     const completion = await openai.chat.completions.create({
       model: useOpenRouter ? "openai/gpt-4o-mini" : "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      max_tokens: 2000,
+      max_tokens: maxTokens,
       response_format: { type: "json_object" },
     });
 
@@ -62,7 +64,7 @@ async function callAI(prompt) {
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 2000,
+            maxOutputTokens: maxTokens,
             responseMimeType: "application/json",
           },
         }),
@@ -86,6 +88,12 @@ async function callAI(prompt) {
   }
 
   throw new Error("Set OPENROUTER_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in server/.env");
+}
+
+async function repairJson(rawText) {
+  const repairPrompt = `Convert the following into valid JSON only. Do not add markdown. Keep keys and meaning the same.\n\n${rawText}`;
+  const { raw } = await callAI(repairPrompt, { maxTokens: 1200 });
+  return raw;
 }
 
 function buildPrompt({ jd, cvText }) {
@@ -207,19 +215,29 @@ export async function screenApplication(req, res) {
       }
 
     } catch (parseError) {
+      // Fallback 1: ask model to repair malformed JSON
+      try {
+        const repaired = await repairJson(raw);
+        parsed = JSON.parse(repaired);
+        console.log("✅ Repaired JSON parse success");
+      } catch (repairError) {
+        console.log("❌ Repair parse failed:", repairError.message);
+      }
 
-      // Fallback 1: Tìm JSON trong markdown code block
-      const markdownMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
-      if (markdownMatch) {
-        try {
-          parsed = JSON.parse(markdownMatch[1]);
-          console.log("✅ Markdown JSON parse success:", parsed);
-        } catch (markdownError) {
-          console.log("❌ Markdown parse failed:", markdownError.message);
+      // Fallback 2: Tìm JSON trong markdown code block
+      if (!parsed) {
+        const markdownMatch = raw.match(/```json\s*([\s\S]*?)\s*```/);
+        if (markdownMatch) {
+          try {
+            parsed = JSON.parse(markdownMatch[1]);
+            console.log("✅ Markdown JSON parse success:", parsed);
+          } catch (markdownError) {
+            console.log("❌ Markdown parse failed:", markdownError.message);
+          }
         }
       }
 
-      // Fallback 2: Tìm JSON object trong text
+      // Fallback 3: Tìm JSON object trong text
       if (!parsed) {
         const jsonMatch = raw.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
@@ -227,22 +245,19 @@ export async function screenApplication(req, res) {
             parsed = JSON.parse(jsonMatch[0]);
             console.log("✅ Fallback JSON parse success:", parsed);
           } catch (fallbackError) {
-            console.log(
-              "❌ Fallback parse also failed:",
-              fallbackError.message
-            );
+            console.log("❌ Fallback parse also failed:", fallbackError.message);
           }
         }
       }
 
-      // Fallback 3: Tạo response lỗi
+      // Fallback 4: Tạo response lỗi
       if (!parsed) {
         parsed = {
           extract: null,
           score: null,
           reasons: {
             error: "Failed to parse AI response",
-            rawResponse: raw.substring(0, 200),
+            rawResponse: raw.substring(0, 400),
             parseError: parseError.message,
           },
         };
