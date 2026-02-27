@@ -41,28 +41,43 @@ async function callAI(prompt) {
   }
 
   if (useGemini) {
-    const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+    const preferred = process.env.GEMINI_MODEL;
+    const candidateModels = [
+      preferred,
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-lite",
+      "gemini-1.5-flash-latest",
+    ].filter(Boolean);
 
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
-      }),
-    });
+    let lastErr = null;
 
-    const data = await resp.json();
-    if (!resp.ok) {
-      throw new Error(data?.error?.message || `Gemini API error (${resp.status})`);
+    for (const model of candidateModels) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`;
+
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok) {
+        lastErr = data?.error?.message || `Gemini API error (${resp.status})`;
+        continue;
+      }
+
+      const raw =
+        data?.candidates?.[0]?.content?.parts
+          ?.map((p) => p.text || "")
+          .join("\n") || "{}";
+
+      return { raw, modelUsed: `gemini:${model}` };
     }
 
-    const raw =
-      data?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("\n") ||
-      "{}";
-
-    return { raw, modelUsed: `gemini:${model}` };
+    throw new Error(lastErr || "No compatible Gemini model found");
   }
 
   throw new Error("Set OPENROUTER_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in server/.env");
