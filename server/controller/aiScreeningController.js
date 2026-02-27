@@ -10,19 +10,19 @@ const useGemini = !!process.env.GEMINI_API_KEY;
 
 const openai = useOpenRouter || useOpenAI
   ? new OpenAI(
-      useOpenRouter
-        ? {
-            apiKey: process.env.OPENROUTER_API_KEY,
-            baseURL: "https://openrouter.ai/api/v1",
-            defaultHeaders: {
-              "HTTP-Referer": "http://localhost:5173",
-              "X-Title": "CV Screening Project",
-            },
-          }
-        : {
-            apiKey: process.env.OPENAI_API_KEY,
-          }
-    )
+    useOpenRouter
+      ? {
+        apiKey: process.env.OPENROUTER_API_KEY,
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+          "HTTP-Referer": "http://localhost:5173",
+          "X-Title": "CV Screening Project",
+        },
+      }
+      : {
+        apiKey: process.env.OPENAI_API_KEY,
+      }
+  )
   : null;
 
 async function callAI(prompt) {
@@ -32,6 +32,7 @@ async function callAI(prompt) {
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 2000,
+      response_format: { type: "json_object" },
     });
 
     return {
@@ -41,12 +42,12 @@ async function callAI(prompt) {
   }
 
   if (useGemini) {
-    const preferred = process.env.GEMINI_MODEL;
+    const preferred = process.env.GEMINI_MODEL || "gemini-2.5-flash";
     const candidateModels = [
       preferred,
+      "gemini-2.5-flash",
       "gemini-2.0-flash",
       "gemini-2.0-flash-lite",
-      "gemini-1.5-flash-latest",
     ].filter(Boolean);
 
     let lastErr = null;
@@ -59,7 +60,11 @@ async function callAI(prompt) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 2000,
+            responseMimeType: "application/json",
+          },
         }),
       });
 
@@ -189,18 +194,18 @@ export async function screenApplication(req, res) {
     console.log("=== END AI RESPONSE ===");
 
     // Parse JSON response
-     let parsed;
+    let parsed;
     try {
       parsed = JSON.parse(raw);
       console.log("✅ Successfully parsed JSON:", parsed);
-      
+
       // Validate JD quality và điểm số
       if (parsed.jd_quality === "poor" && parsed.score > 25) {
         console.warn("⚠️ AI cho điểm cao với JD kém chất lượng, điều chỉnh xuống 15");
         parsed.score = 15;
         parsed.reasons.must_have_skills = "JD không đủ thông tin để đánh giá - điểm thấp";
       }
-      
+
     } catch (parseError) {
 
       // Fallback 1: Tìm JSON trong markdown code block
