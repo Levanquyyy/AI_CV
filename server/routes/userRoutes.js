@@ -10,6 +10,7 @@ import { uploadResume } from "../config/multer.js";
 import {
   getAIScreeningResult,
   screenApplication,
+  updateAIScreeningReview,
 } from "../controller/aiScreeningController.js";
 import { logActivity } from "../utils/activity.js";
 import User from "../models/User.js";
@@ -111,5 +112,6 @@ router.post(
 // AI Screening routes
 router.post("/applications/screen", screenApplication);
 router.get("/applications/:applicationId/ai-result", getAIScreeningResult);
+router.patch("/applications/:applicationId/ai-review", updateAIScreeningReview);
 
 export default router;

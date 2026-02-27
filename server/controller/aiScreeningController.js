@@ -324,3 +324,62 @@ export async function getAIScreeningResult(req, res) {
     });
   }
 }
+
+// Endpoint để reviewer cập nhật điểm AI thủ công sau khi review
+export async function updateAIScreeningReview(req, res) {
+  try {
+    const { applicationId } = req.params;
+    const { aiScore, aiReasons, aiReviewed = true } = req.body;
+
+    if (typeof aiScore !== "number" || Number.isNaN(aiScore)) {
+      return res.status(400).json({
+        success: false,
+        message: "aiScore must be a number",
+      });
+    }
+
+    if (aiScore < 0 || aiScore > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "aiScore must be between 0 and 100",
+      });
+    }
+
+    const application = await JobApplication.findById(applicationId);
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found",
+      });
+    }
+
+    application.aiScore = aiScore;
+    application.aiReasons =
+      typeof aiReasons === "string"
+        ? aiReasons
+        : JSON.stringify(aiReasons || {});
+    application.aiReviewed = !!aiReviewed;
+
+    await application.save();
+
+    return res.json({
+      success: true,
+      message: "AI review score updated successfully",
+      data: {
+        applicationId: application._id,
+        aiScore: application.aiScore,
+        aiReasons: application.aiReasons
+          ? JSON.parse(application.aiReasons)
+          : {},
+        aiReviewed: application.aiReviewed,
+      },
+    });
+  } catch (error) {
+    console.error("Update AI Review Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update AI review",
+      error: error.message,
+    });
+  }
+}
