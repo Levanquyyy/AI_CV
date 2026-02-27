@@ -4,14 +4,22 @@ import Job from "../models/Job.js";
 import JobApplication from "../models/JobApplication.js";
 import { extractTextFromCloudinary } from "../utils/cvExtract.js";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: "https://openrouter.ai/api/v1",
-  defaultHeaders: {
-    "HTTP-Referer": "http://localhost:5173",
-    "X-Title": "CV Screening Project",
-  },
-});
+const useOpenRouter = !!process.env.OPENROUTER_API_KEY;
+
+const openai = new OpenAI(
+  useOpenRouter
+    ? {
+        apiKey: process.env.OPENROUTER_API_KEY,
+        baseURL: "https://openrouter.ai/api/v1",
+        defaultHeaders: {
+          "HTTP-Referer": "http://localhost:5173",
+          "X-Title": "CV Screening Project",
+        },
+      }
+    : {
+        apiKey: process.env.OPENAI_API_KEY,
+      }
+);
 
 function buildPrompt({ jd, cvText }) {
   return `
@@ -57,6 +65,13 @@ ${cvText}
 
 export async function screenApplication(req, res) {
   try {
+    if (!process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY) {
+      return res.status(500).json({
+        message: "Missing AI API key",
+        error: "Set OPENROUTER_API_KEY or OPENAI_API_KEY in server/.env",
+      });
+    }
+
     const { applicationId } = req.body;
 
     if (!applicationId) {
