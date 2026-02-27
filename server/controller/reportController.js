@@ -9,13 +9,14 @@ export const submitReport = async (req, res) => {
     const { jobId, reason, description, userName, userEmail } = req.body;
 
     // bắt buộc đăng nhập
-    if (!req.auth?.userId) {
+    const { userId: authUserId } = req.auth();
+    if (!authUserId) {
       return res.status(401).json({
         success: false,
         message: "Bạn cần đăng nhập để gửi báo cáo.",
       });
     }
-    const userId = req.auth.userId || req.body.userId;
+    const userId = authUserId || req.body.userId;
 
     // validate input
     if (!jobId) {

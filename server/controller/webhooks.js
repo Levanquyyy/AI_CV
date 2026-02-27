@@ -44,35 +44,38 @@ export const clerkWebhooks = async (req, res) => {
           // Đảm bảo MongoDB connection
           if (mongoose.connection.readyState !== 1) {
             console.log("MongoDB not connected, reconnecting...");
-            await mongoose.connect(`${process.env.MONGODB_URI}/job-portal`, {
-              useNewUrlParser: true,
-              useUnifiedTopology: true,
-            });
+            await mongoose.connect(`${process.env.MONGODB_URI}/job-portal`);
           }
-          
-          // Kiểm tra user đã tồn tại chưa
+
+          // Idempotent handling:
+          // 1) ưu tiên match theo Clerk user id (_id)
+          // 2) nếu không có, fallback theo email để tránh duplicate key email
+          // 3) nếu không có gì, tạo mới
           let user = await User.findById(userData._id);
-          
+
           if (user) {
-            console.log("User already exists, updating...");
-            // Update user nếu đã tồn tại
-            user = await User.findByIdAndUpdate(
-              userData._id, 
-              {
-                email: userData.email,
-                name: userData.name,
-                image: userData.image
-              },
-              { new: true }
-            );
-            console.log("User updated successfully:", user);
+            user.email = userData.email;
+            user.name = userData.name;
+            user.image = userData.image;
+            await user.save();
+            console.log("User updated by clerk id:", user);
           } else {
-            // Tạo user mới
-            user = await User.create(userData);
-            console.log("User created successfully:", user);
+            const userByEmail = await User.findOne({ email: userData.email });
+
+            if (userByEmail) {
+              // Giữ _id cũ để tránh vỡ reference cũ trong DB
+              userByEmail.name = userData.name;
+              userByEmail.image = userData.image;
+              await userByEmail.save();
+              user = userByEmail;
+              console.log("User matched by email and updated:", user);
+            } else {
+              user = await User.create(userData);
+              console.log("User created successfully:", user);
+            }
           }
-          
-          res.json({ success: true, user: user });
+
+          res.json({ success: true, user });
         } catch (dbError) {
           console.error("Database error when creating/updating user:", dbError);
           res.status(500).json({ 

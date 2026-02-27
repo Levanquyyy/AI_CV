@@ -7,7 +7,7 @@ import { logActivity } from "../utils/activity.js";
 import { uploadResumeRaw } from "../utils/uploadResumeRaw.js";
 // Get user Data
 export const getUserData = async (req, res) => {
-  const userId = req.auth.userId;
+  const { userId } = req.auth();
 
   console.log("User ID from request:", userId); // Log the user ID
 
@@ -28,7 +28,7 @@ export const getUserData = async (req, res) => {
 // Apply For a Job
 export const applyForJob = async (req, res) => {
   const { jobId } = req.body;
-  const userId = req.auth.userId;
+  const { userId } = req.auth();
 
   try {
     const userDoc = await User.findById(userId).select("name email");
@@ -77,7 +77,7 @@ export const applyForJob = async (req, res) => {
 // Get User applied applications
 export const getUserJobApplications = async (req, res) => {
   try {
-    const userId = req.auth.userId;
+    const { userId } = req.auth();
 
     const applications = await JobApplication.find({ userId })
       .populate("companyId", "name email image")
@@ -100,7 +100,7 @@ export const getUserJobApplications = async (req, res) => {
 // Update User Profile (resume)
 export const updateUserResume = async (req, res) => {
   try {
-    const userId = req.auth.userId;
+    const { userId } = req.auth();
     const resumeFile = req.file;
     if (!resumeFile) {
       return res.json({ success: false, message: "No resume file provided" });
