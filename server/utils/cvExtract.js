@@ -1,7 +1,7 @@
 // utils/cvExtract.js
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse"); // ✅ nạp CJS an toàn trong ESM
+const pdfParseLib = require("pdf-parse"); // ✅ nạp CJS an toàn trong ESM
 
 import mammoth from "mammoth";
 import axios from "axios";
@@ -13,8 +13,23 @@ export async function extractTextFromCloudinary(url, mimetypeHint = "") {
 
     // PDF
     if (mimetypeHint.includes("pdf") || url.toLowerCase().endsWith(".pdf")) {
-      const parsed = await pdfParse(buf); // ✅ dùng biến pdfParse
-      return parsed.text || "";
+      // Support both old pdf-parse API (function) and new v2 API (PDFParse class)
+      if (typeof pdfParseLib === "function") {
+        const parsed = await pdfParseLib(buf);
+        return parsed?.text || "";
+      }
+
+      if (pdfParseLib?.PDFParse) {
+        const parser = new pdfParseLib.PDFParse({ data: buf });
+        try {
+          const parsed = await parser.getText();
+          return parsed?.text || "";
+        } finally {
+          await parser.destroy?.();
+        }
+      }
+
+      throw new Error("Unsupported pdf-parse API shape");
     }
 
     // DOCX
